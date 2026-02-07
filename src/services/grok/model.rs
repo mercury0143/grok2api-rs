@@ -94,6 +94,30 @@ impl ModelService {
                 m.description = "Video generation model".to_string();
                 m
             },
+            {
+                let mut m = ModelInfo::new(
+                    "grok-video-3",
+                    "grok-3",
+                    "MODEL_MODE_FAST",
+                    "Grok Video 3",
+                );
+                m.cost = Cost::High;
+                m.is_video = true;
+                m.description = "3-second video generation model".to_string();
+                m
+            },
+            {
+                let mut m = ModelInfo::new(
+                    "grok-video-3-pro",
+                    "grok-3",
+                    "MODEL_MODE_FAST",
+                    "Grok Video 3 Pro",
+                );
+                m.cost = Cost::High;
+                m.is_video = true;
+                m.description = "6-second video generation model".to_string();
+                m
+            },
         ];
         models
     }
