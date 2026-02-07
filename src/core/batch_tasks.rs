@@ -2,8 +2,8 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use once_cell::sync::Lazy;
-use serde_json::{json, Value as JsonValue};
-use tokio::sync::{mpsc, Mutex, RwLock};
+use serde_json::{Value as JsonValue, json};
+use tokio::sync::{Mutex, RwLock, mpsc};
 use uuid::Uuid;
 
 #[derive(Debug)]
@@ -64,7 +64,13 @@ impl BatchTask {
         self.queues.retain(|tx| tx.try_send(event.clone()).is_ok());
     }
 
-    pub fn record(&mut self, ok: bool, item: Option<JsonValue>, detail: Option<JsonValue>, error: Option<String>) {
+    pub fn record(
+        &mut self,
+        ok: bool,
+        item: Option<JsonValue>,
+        detail: Option<JsonValue>,
+        error: Option<String>,
+    ) {
         self.processed += 1;
         if ok {
             self.ok += 1;
@@ -148,7 +154,8 @@ impl BatchTask {
     }
 }
 
-static TASKS: Lazy<RwLock<HashMap<String, Arc<Mutex<BatchTask>>>>> = Lazy::new(|| RwLock::new(HashMap::new()));
+static TASKS: Lazy<RwLock<HashMap<String, Arc<Mutex<BatchTask>>>>> =
+    Lazy::new(|| RwLock::new(HashMap::new()));
 
 pub async fn create_task(total: usize) -> Arc<Mutex<BatchTask>> {
     let task = Arc::new(Mutex::new(BatchTask::new(total)));

@@ -8,11 +8,15 @@ timeout = 120
 base_proxy_url = ""
 asset_proxy_url = ""
 cf_clearance = ""
-use_curl_impersonate = true
-curl_impersonate = ""
-curl_path = "/root/data/curl-impersonate/curl_chrome116"
+wreq_emulation = "chrome_136"
+wreq_emulation_usage = ""
+wreq_emulation_nsfw = ""
 max_retry = 3
 retry_status_codes = [401, 429, 403]
+imagine_default_image_count = 4
+imagine_sso_daily_limit = 10
+imagine_blocked_retry = 3
+imagine_max_retries = 5
 
 [app]
 app_url = "http://127.0.0.1:8000"
@@ -49,6 +53,7 @@ nsfw_max_tokens = 1000
 enable_chat_completions = true
 enable_responses = true
 enable_images = true
+enable_images_nsfw = true
 enable_models = true
 enable_files = true
 

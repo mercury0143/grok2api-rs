@@ -3,8 +3,8 @@ use std::net::SocketAddr;
 use dotenvy::dotenv;
 use tracing_subscriber::EnvFilter;
 
-mod app;
 mod api;
+mod app;
 mod core;
 mod services;
 

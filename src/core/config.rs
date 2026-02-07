@@ -5,7 +5,7 @@ use serde::de::DeserializeOwned;
 use serde_json::Value as JsonValue;
 use tokio::sync::{OnceCell, RwLock};
 
-use crate::core::storage::{get_storage, Storage, StorageError};
+use crate::core::storage::{Storage, StorageError, get_storage};
 
 static CONFIG: OnceCell<Arc<Config>> = OnceCell::const_new();
 
@@ -34,7 +34,12 @@ impl Config {
 
     pub async fn load(&self) -> Result<(), StorageError> {
         self.ensure_defaults().await;
-        let defaults = self.defaults.read().await.clone().unwrap_or(JsonValue::Object(Default::default()));
+        let defaults = self
+            .defaults
+            .read()
+            .await
+            .clone()
+            .unwrap_or(JsonValue::Object(Default::default()));
         let storage = get_storage();
 
         let mut from_remote = true;
@@ -63,7 +68,12 @@ impl Config {
 
     pub async fn update(&self, new_config: &JsonValue) -> Result<(), StorageError> {
         self.ensure_defaults().await;
-        let defaults = self.defaults.read().await.clone().unwrap_or(JsonValue::Object(Default::default()));
+        let defaults = self
+            .defaults
+            .read()
+            .await
+            .clone()
+            .unwrap_or(JsonValue::Object(Default::default()));
         let current = self.inner.read().await.clone();
         let base = deep_merge(&defaults, &current);
         let merged = deep_merge(&base, new_config);
@@ -85,22 +95,30 @@ impl Config {
 }
 
 pub async fn load_config() -> Result<(), StorageError> {
-    let cfg = CONFIG.get_or_init(|| async { Arc::new(Config::new()) }).await;
+    let cfg = CONFIG
+        .get_or_init(|| async { Arc::new(Config::new()) })
+        .await;
     cfg.load().await
 }
 
 pub async fn update_config(new_config: &JsonValue) -> Result<(), StorageError> {
-    let cfg = CONFIG.get_or_init(|| async { Arc::new(Config::new()) }).await;
+    let cfg = CONFIG
+        .get_or_init(|| async { Arc::new(Config::new()) })
+        .await;
     cfg.update(new_config).await
 }
 
 pub async fn get_config_value(key: &str) -> Option<JsonValue> {
-    let cfg = CONFIG.get_or_init(|| async { Arc::new(Config::new()) }).await;
+    let cfg = CONFIG
+        .get_or_init(|| async { Arc::new(Config::new()) })
+        .await;
     cfg.get_value(key).await
 }
 
 pub async fn get_all_config() -> JsonValue {
-    let cfg = CONFIG.get_or_init(|| async { Arc::new(Config::new()) }).await;
+    let cfg = CONFIG
+        .get_or_init(|| async { Arc::new(Config::new()) })
+        .await;
     cfg.inner.read().await.clone()
 }
 

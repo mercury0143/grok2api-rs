@@ -52,12 +52,23 @@ impl BaseProcessor {
             Err(e) => {
                 tracing::error!("Failed to download and upload media: {}", e);
                 // 降级为原始 URL
-                format!("{}/v1/files/{media_type}{}", self.app_url.trim_end_matches('/'), url_path)
+                format!(
+                    "{}/v1/files/{media_type}{}",
+                    self.app_url.trim_end_matches('/'),
+                    url_path
+                )
             }
         }
     }
 
-    fn sse_chunk(&self, response_id: &str, fingerprint: &str, content: Option<&str>, role: Option<&str>, finish: Option<&str>) -> String {
+    fn sse_chunk(
+        &self,
+        response_id: &str,
+        fingerprint: &str,
+        content: Option<&str>,
+        role: Option<&str>,
+        finish: Option<&str>,
+    ) -> String {
         let mut delta = serde_json::json!({});
         if let Some(role) = role {
             delta["role"] = JsonValue::String(role.to_string());
@@ -264,7 +275,11 @@ impl CollectProcessor {
                     Ok(v) => v,
                     Err(_) => continue,
                 };
-                let resp = data.get("result").and_then(|v| v.get("response")).cloned().unwrap_or(JsonValue::Null);
+                let resp = data
+                    .get("result")
+                    .and_then(|v| v.get("response"))
+                    .cloned()
+                    .unwrap_or(JsonValue::Null);
                 if let Some(llm) = resp.get("llmInfo") {
                     if fingerprint.is_empty() {
                         if let Some(hash) = llm.get("modelHash").and_then(|v| v.as_str()) {
@@ -284,7 +299,9 @@ impl CollectProcessor {
                             if let Some(url) = url_val.as_str() {
                                 let final_url = if self.image_format == "base64" {
                                     let dl = DownloadService::new().await;
-                                    dl.to_base64(url, &self.base.token, "image").await.unwrap_or_else(|_| url.to_string())
+                                    dl.to_base64(url, &self.base.token, "image")
+                                        .await
+                                        .unwrap_or_else(|_| url.to_string())
                                 } else {
                                     self.base.process_url(url, "image").await
                                 };
@@ -346,8 +363,14 @@ impl VideoStreamProcessor {
     }
 
     fn build_video_html(video_url: &str, thumbnail_url: &str) -> String {
-        let poster = if thumbnail_url.is_empty() { "".to_string() } else { format!(" poster=\"{}\"", thumbnail_url) };
-        format!("<video id=\"video\" controls=\"\" preload=\"none\"{poster}>\n  <source id=\"mp4\" src=\"{video_url}\" type=\"video/mp4\">\n</video>")
+        let poster = if thumbnail_url.is_empty() {
+            "".to_string()
+        } else {
+            format!(" poster=\"{}\"", thumbnail_url)
+        };
+        format!(
+            "<video id=\"video\" controls=\"\" preload=\"none\"{poster}>\n  <source id=\"mp4\" src=\"{video_url}\" type=\"video/mp4\">\n</video>"
+        )
     }
 
     pub fn process<S>(mut self, input: S) -> impl Stream<Item = Result<Bytes, Infallible>>
@@ -424,12 +447,20 @@ pub struct VideoCollectProcessor {
 
 impl VideoCollectProcessor {
     pub async fn new(model: &str, token: &str) -> Self {
-        Self { base: BaseProcessor::new(model, token).await }
+        Self {
+            base: BaseProcessor::new(model, token).await,
+        }
     }
 
     fn build_video_html(video_url: &str, thumbnail_url: &str) -> String {
-        let poster = if thumbnail_url.is_empty() { "".to_string() } else { format!(" poster=\"{}\"", thumbnail_url) };
-        format!("<video id=\"video\" controls=\"\" preload=\"none\"{poster}>\n  <source id=\"mp4\" src=\"{video_url}\" type=\"video/mp4\">\n</video>")
+        let poster = if thumbnail_url.is_empty() {
+            "".to_string()
+        } else {
+            format!(" poster=\"{}\"", thumbnail_url)
+        };
+        format!(
+            "<video id=\"video\" controls=\"\" preload=\"none\"{poster}>\n  <source id=\"mp4\" src=\"{video_url}\" type=\"video/mp4\">\n</video>"
+        )
     }
 
     pub fn process<S>(self, input: S) -> impl std::future::Future<Output = JsonValue>
@@ -441,17 +472,40 @@ impl VideoCollectProcessor {
             let mut content = String::new();
             let mut stream = Box::pin(input);
             while let Some(line) = stream.next().await {
-                if line.trim().is_empty() { continue; }
-                let data: JsonValue = match serde_json::from_str(&line) { Ok(v) => v, Err(_) => continue };
-                let resp = data.get("result").and_then(|v| v.get("response")).cloned().unwrap_or(JsonValue::Null);
+                if line.trim().is_empty() {
+                    continue;
+                }
+                let data: JsonValue = match serde_json::from_str(&line) {
+                    Ok(v) => v,
+                    Err(_) => continue,
+                };
+                let resp = data
+                    .get("result")
+                    .and_then(|v| v.get("response"))
+                    .cloned()
+                    .unwrap_or(JsonValue::Null);
                 if let Some(video_resp) = resp.get("streamingVideoGenerationResponse") {
                     if video_resp.get("progress").and_then(|v| v.as_i64()) == Some(100) {
-                        response_id = resp.get("responseId").and_then(|v| v.as_str()).unwrap_or("").to_string();
-                        let video_url = video_resp.get("videoUrl").and_then(|v| v.as_str()).unwrap_or("");
-                        let thumb_url = video_resp.get("thumbnailImageUrl").and_then(|v| v.as_str()).unwrap_or("");
+                        response_id = resp
+                            .get("responseId")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("")
+                            .to_string();
+                        let video_url = video_resp
+                            .get("videoUrl")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("");
+                        let thumb_url = video_resp
+                            .get("thumbnailImageUrl")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("");
                         if !video_url.is_empty() {
                             let final_video = self.base.process_url(video_url, "video").await;
-                            let final_thumb = if thumb_url.is_empty() { String::new() } else { self.base.process_url(thumb_url, "image").await };
+                            let final_thumb = if thumb_url.is_empty() {
+                                String::new()
+                            } else {
+                                self.base.process_url(thumb_url, "image").await
+                            };
                             content = Self::build_video_html(&final_video, &final_thumb);
                         }
                     }
@@ -478,16 +532,22 @@ pub struct ImageStreamProcessor {
     partial_index: usize,
     n: usize,
     target_index: Option<usize>,
+    return_base64: bool,
 }
 
 impl ImageStreamProcessor {
-    pub async fn new(model: &str, token: &str, n: usize) -> Self {
-        let target_index = if n == 1 { Some(rand::random::<usize>() % 2) } else { None };
+    pub async fn new(model: &str, token: &str, n: usize, return_base64: bool) -> Self {
+        let target_index = if n == 1 {
+            Some(rand::random::<usize>() % 2)
+        } else {
+            None
+        };
         Self {
             base: BaseProcessor::new(model, token).await,
             partial_index: 0,
             n,
             target_index,
+            return_base64,
         }
     }
 
@@ -500,28 +560,43 @@ impl ImageStreamProcessor {
         S: Stream<Item = String> + Send + 'static,
     {
         stream! {
-            let mut final_images: Vec<String> = Vec::new();
+            let mut final_images: Vec<JsonValue> = Vec::new();
             let mut stream = Box::pin(input);
             while let Some(line) = stream.next().await {
-                if line.trim().is_empty() { continue; }
-                let data: JsonValue = match serde_json::from_str(&line) { Ok(v) => v, Err(_) => continue };
-                let resp = data.get("result").and_then(|v| v.get("response")).cloned().unwrap_or(JsonValue::Null);
+                if line.trim().is_empty() {
+                    continue;
+                }
+                let data: JsonValue = match serde_json::from_str(&line) {
+                    Ok(v) => v,
+                    Err(_) => continue,
+                };
+                let resp = data
+                    .get("result")
+                    .and_then(|v| v.get("response"))
+                    .cloned()
+                    .unwrap_or(JsonValue::Null);
 
                 if let Some(img) = resp.get("streamingImageGenerationResponse") {
                     let image_index = img.get("imageIndex").and_then(|v| v.as_i64()).unwrap_or(0) as usize;
                     let progress = img.get("progress").and_then(|v| v.as_i64()).unwrap_or(0);
                     if self.n == 1 {
                         if let Some(target) = self.target_index {
-                            if image_index != target { continue; }
+                            if image_index != target {
+                                continue;
+                            }
                         }
                     }
                     let out_index = if self.n == 1 { 0 } else { image_index };
-                    let payload = serde_json::json!({
+                    let mut payload = serde_json::json!({
                         "type": "image_generation.partial_image",
-                        "b64_json": "",
                         "index": out_index,
                         "progress": progress,
                     });
+                    if self.return_base64 {
+                        payload["b64_json"] = JsonValue::String(String::new());
+                    } else {
+                        payload["url"] = JsonValue::String(String::new());
+                    }
                     yield Ok(Bytes::from(Self::sse_event("image_generation.partial_image", payload)));
                     continue;
                 }
@@ -530,10 +605,19 @@ impl ImageStreamProcessor {
                     if let Some(urls) = mr.get("generatedImageUrls").and_then(|v| v.as_array()) {
                         for url in urls {
                             if let Some(url) = url.as_str() {
-                                let dl = DownloadService::new().await;
-                                if let Ok(b64) = dl.to_base64(url, &self.base.token, "image").await {
-                                    let b64_str = if let Some(idx) = b64.find(',') { b64[idx+1..].to_string() } else { b64 };
-                                    final_images.push(b64_str);
+                                if self.return_base64 {
+                                    let dl = DownloadService::new().await;
+                                    if let Ok(b64) = dl.to_base64(url, &self.base.token, "image").await {
+                                        let b64_str = if let Some(idx) = b64.find(',') {
+                                            b64[idx + 1..].to_string()
+                                        } else {
+                                            b64
+                                        };
+                                        final_images.push(serde_json::json!({"b64_json": b64_str}));
+                                    }
+                                } else {
+                                    let final_url = self.base.process_url(url, "image").await;
+                                    final_images.push(serde_json::json!({"url": final_url}));
                                 }
                             }
                         }
@@ -541,14 +625,19 @@ impl ImageStreamProcessor {
                 }
             }
 
-            for (index, b64) in final_images.iter().enumerate() {
+            for (index, image) in final_images.iter().enumerate() {
                 let out_index = if self.n == 1 {
-                    if let Some(target) = self.target_index { if index != target { continue; } }
+                    if let Some(target) = self.target_index {
+                        if index != target {
+                            continue;
+                        }
+                    }
                     0
-                } else { index };
-                let payload = serde_json::json!({
+                } else {
+                    index
+                };
+                let mut payload = serde_json::json!({
                     "type": "image_generation.completed",
-                    "b64_json": b64,
                     "index": out_index,
                     "usage": {
                         "total_tokens": 50,
@@ -557,6 +646,12 @@ impl ImageStreamProcessor {
                         "input_tokens_details": {"text_tokens": 5, "image_tokens": 20}
                     }
                 });
+                if let Some(b64) = image.get("b64_json").and_then(|v| v.as_str()) {
+                    payload["b64_json"] = JsonValue::String(b64.to_string());
+                }
+                if let Some(url) = image.get("url").and_then(|v| v.as_str()) {
+                    payload["url"] = JsonValue::String(url.to_string());
+                }
                 yield Ok(Bytes::from(Self::sse_event("image_generation.completed", payload)));
             }
         }
@@ -565,14 +660,18 @@ impl ImageStreamProcessor {
 
 pub struct ImageCollectProcessor {
     base: BaseProcessor,
+    return_base64: bool,
 }
 
 impl ImageCollectProcessor {
-    pub async fn new(model: &str, token: &str) -> Self {
-        Self { base: BaseProcessor::new(model, token).await }
+    pub async fn new(model: &str, token: &str, return_base64: bool) -> Self {
+        Self {
+            base: BaseProcessor::new(model, token).await,
+            return_base64,
+        }
     }
 
-    pub fn process<S>(self, input: S) -> impl std::future::Future<Output = Vec<String>>
+    pub fn process<S>(self, input: S) -> impl std::future::Future<Output = Vec<JsonValue>>
     where
         S: Stream<Item = String> + Send + 'static,
     {
@@ -580,17 +679,37 @@ impl ImageCollectProcessor {
             let mut images = Vec::new();
             let mut stream = Box::pin(input);
             while let Some(line) = stream.next().await {
-                if line.trim().is_empty() { continue; }
-                let data: JsonValue = match serde_json::from_str(&line) { Ok(v) => v, Err(_) => continue };
-                let resp = data.get("result").and_then(|v| v.get("response")).cloned().unwrap_or(JsonValue::Null);
+                if line.trim().is_empty() {
+                    continue;
+                }
+                let data: JsonValue = match serde_json::from_str(&line) {
+                    Ok(v) => v,
+                    Err(_) => continue,
+                };
+                let resp = data
+                    .get("result")
+                    .and_then(|v| v.get("response"))
+                    .cloned()
+                    .unwrap_or(JsonValue::Null);
                 if let Some(mr) = resp.get("modelResponse") {
                     if let Some(urls) = mr.get("generatedImageUrls").and_then(|v| v.as_array()) {
                         for url in urls {
                             if let Some(url) = url.as_str() {
-                                let dl = DownloadService::new().await;
-                                if let Ok(b64) = dl.to_base64(url, &self.base.token, "image").await {
-                                    let b64_str = if let Some(idx) = b64.find(',') { b64[idx+1..].to_string() } else { b64 };
-                                    images.push(b64_str);
+                                if self.return_base64 {
+                                    let dl = DownloadService::new().await;
+                                    if let Ok(b64) =
+                                        dl.to_base64(url, &self.base.token, "image").await
+                                    {
+                                        let b64_str = if let Some(idx) = b64.find(',') {
+                                            b64[idx + 1..].to_string()
+                                        } else {
+                                            b64
+                                        };
+                                        images.push(serde_json::json!({"b64_json": b64_str}));
+                                    }
+                                } else {
+                                    let final_url = self.base.process_url(url, "image").await;
+                                    images.push(serde_json::json!({"url": final_url}));
                                 }
                             }
                         }

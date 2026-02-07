@@ -2,14 +2,14 @@ use async_stream::stream;
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::sse::Event;
 use axum::{
+    Json, Router,
     extract::{Path, Query},
     response::{Html, IntoResponse, Response, Sse},
     routing::{get, post},
-    Json, Router,
 };
 use futures::{Stream, StreamExt};
 use serde::Deserialize;
-use serde_json::{json, Value as JsonValue};
+use serde_json::{Value as JsonValue, json};
 use std::collections::HashMap;
 use std::convert::Infallible;
 
@@ -18,9 +18,9 @@ use crate::core::batch_tasks::{create_task, expire_task, get_task};
 use crate::core::config::{get_all_config, update_config};
 use crate::core::exceptions::ApiError;
 use crate::core::static_assets;
-use crate::core::storage::{get_storage, Storage};
+use crate::core::storage::{Storage, get_storage};
 use crate::services::grok::assets::{DeleteService, DownloadService, ListService};
-use crate::services::grok::batch::{run_in_batches, OnItem, ShouldCancel};
+use crate::services::grok::batch::{OnItem, ShouldCancel, run_in_batches};
 use crate::services::grok::nsfw::NsfwService;
 use crate::services::token::get_token_manager;
 
@@ -31,24 +31,49 @@ pub fn router() -> Router {
         .route("/admin/token", get(admin_token_page))
         .route("/admin/cache", get(admin_cache_page))
         .route("/admin/downstream", get(admin_downstream_page))
+        .route("/admin/dialog", get(admin_dialog_page))
         .route("/admin/storage", get(admin_storage_page))
         .route("/api/v1/admin/login", post(admin_login_api))
-        .route("/api/v1/admin/config", get(get_config_api).post(update_config_api))
+        .route(
+            "/api/v1/admin/config",
+            get(get_config_api).post(update_config_api),
+        )
         .route("/api/v1/admin/storage", get(get_storage_api))
         .route("/api/v1/admin/storage/config", get(get_storage_config_api).post(update_storage_config_api))
         .route("/api/v1/admin/storage/test", post(test_storage_api))
-        .route("/api/v1/admin/tokens", get(get_tokens_api).post(update_tokens_api))
+        .route(
+            "/api/v1/admin/tokens",
+            get(get_tokens_api).post(update_tokens_api),
+        )
         .route("/api/v1/admin/tokens/refresh", post(refresh_tokens_api))
-        .route("/api/v1/admin/tokens/refresh/async", post(refresh_tokens_api_async))
+        .route(
+            "/api/v1/admin/tokens/refresh/async",
+            post(refresh_tokens_api_async),
+        )
         .route("/api/v1/admin/tokens/nsfw/enable", post(enable_nsfw_api))
-        .route("/api/v1/admin/tokens/nsfw/enable/async", post(enable_nsfw_api_async))
+        .route(
+            "/api/v1/admin/tokens/nsfw/enable/async",
+            post(enable_nsfw_api_async),
+        )
         .route("/api/v1/admin/cache", get(get_cache_stats_api))
         .route("/api/v1/admin/cache/clear", post(clear_local_cache_api))
         .route("/api/v1/admin/cache/list", get(list_local_cache_api))
-        .route("/api/v1/admin/cache/item/delete", post(delete_local_cache_item_api))
-        .route("/api/v1/admin/cache/online/clear", post(clear_online_cache_api))
-        .route("/api/v1/admin/cache/online/clear/async", post(clear_online_cache_api_async))
-        .route("/api/v1/admin/cache/online/load/async", post(load_online_cache_api_async))
+        .route(
+            "/api/v1/admin/cache/item/delete",
+            post(delete_local_cache_item_api),
+        )
+        .route(
+            "/api/v1/admin/cache/online/clear",
+            post(clear_online_cache_api),
+        )
+        .route(
+            "/api/v1/admin/cache/online/clear/async",
+            post(clear_online_cache_api_async),
+        )
+        .route(
+            "/api/v1/admin/cache/online/load/async",
+            post(load_online_cache_api_async),
+        )
         .route("/api/v1/admin/batch/:task_id/stream", get(stream_batch))
         .route("/api/v1/admin/batch/:task_id/cancel", post(cancel_batch))
 }
@@ -57,19 +82,38 @@ async fn render_template(path: &str) -> Response {
     if let Some(content) = static_assets::get_text(path) {
         return Html(content).into_response();
     }
-    let file_path = crate::core::config::project_root().join("static").join(path);
+    let file_path = crate::core::config::project_root()
+        .join("static")
+        .join(path);
     if let Ok(content) = tokio::fs::read_to_string(&file_path).await {
         return Html(content).into_response();
     }
     (StatusCode::NOT_FOUND, format!("Template {path} not found.")).into_response()
 }
 
-async fn admin_login_page() -> Response { render_template("login/login.html").await }
-async fn admin_config_page() -> Response { render_template("config/config.html").await }
-async fn admin_token_page() -> Response { render_template("token/token.html").await }
-async fn admin_cache_page() -> Response { render_template("cache/cache.html").await }
-async fn admin_downstream_page() -> Response { render_template("downstream/downstream.html").await }
-async fn admin_storage_page() -> Response { render_template("storage/storage.html").await }
+async fn admin_login_page() -> Response {
+    render_template("login/login.html").await
+}
+async fn admin_config_page() -> Response {
+    render_template("config/config.html").await
+}
+async fn admin_token_page() -> Response {
+    render_template("token/token.html").await
+}
+async fn admin_cache_page() -> Response {
+    render_template("cache/cache.html").await
+}
+async fn admin_downstream_page() -> Response {
+    render_template("downstream/downstream.html").await
+}
+
+async fn admin_dialog_page() -> Response {
+    render_template("dialog/dialog.html").await
+}
+
+async fn admin_storage_page() -> Response {
+    render_template("storage/storage.html").await
+}
 
 async fn admin_login_api(headers: HeaderMap) -> Result<Response, ApiError> {
     verify_app_key(&headers).await?;
@@ -89,7 +133,10 @@ async fn get_config_api(headers: HeaderMap) -> Result<Response, ApiError> {
     Ok(Json(cfg).into_response())
 }
 
-async fn update_config_api(headers: HeaderMap, Json(data): Json<JsonValue>) -> Result<Response, ApiError> {
+async fn update_config_api(
+    headers: HeaderMap,
+    Json(data): Json<JsonValue>,
+) -> Result<Response, ApiError> {
     verify_api_key(&headers).await?;
     // 从通用配置保存中移除 storage section，避免覆盖存储管理页面的配置
     let mut filtered = data.clone();
@@ -109,15 +156,23 @@ async fn get_storage_api(headers: HeaderMap) -> Result<Response, ApiError> {
 async fn get_tokens_api(headers: HeaderMap) -> Result<Response, ApiError> {
     verify_api_key(&headers).await?;
     let storage = get_storage();
-    let tokens = storage.load_tokens().await.unwrap_or(JsonValue::Object(Default::default()));
+    let tokens = storage
+        .load_tokens()
+        .await
+        .unwrap_or(JsonValue::Object(Default::default()));
     Ok(Json(tokens).into_response())
 }
 
-async fn update_tokens_api(headers: HeaderMap, Json(data): Json<JsonValue>) -> Result<Response, ApiError> {
+async fn update_tokens_api(
+    headers: HeaderMap,
+    Json(data): Json<JsonValue>,
+) -> Result<Response, ApiError> {
     verify_api_key(&headers).await?;
     let storage = get_storage();
     storage
-        .with_lock("tokens_save", 10, || async { storage.save_tokens(&data).await })
+        .with_lock("tokens_save", 10, || async {
+            storage.save_tokens(&data).await
+        })
         .await
         .map_err(|e| ApiError::server(e.to_string()))?;
     let mgr = get_token_manager().await;
@@ -131,56 +186,98 @@ struct TokenRefreshRequest {
     tokens: Option<Vec<String>>,
 }
 
-async fn refresh_tokens_api(headers: HeaderMap, Json(data): Json<TokenRefreshRequest>) -> Result<Response, ApiError> {
+async fn refresh_tokens_api(
+    headers: HeaderMap,
+    Json(data): Json<TokenRefreshRequest>,
+) -> Result<Response, ApiError> {
     verify_api_key(&headers).await?;
     let mgr = get_token_manager().await;
     let mut mgr = mgr.lock().await;
 
     let mut tokens = Vec::new();
-    if let Some(t) = data.token { tokens.push(t); }
-    if let Some(list) = data.tokens { tokens.extend(list); }
-    if tokens.is_empty() { return Err(ApiError::invalid_request("No tokens provided")); }
-    tokens = tokens.into_iter().map(|t| t.trim().to_string()).filter(|t| !t.is_empty()).collect();
+    if let Some(t) = data.token {
+        tokens.push(t);
+    }
+    if let Some(list) = data.tokens {
+        tokens.extend(list);
+    }
+    if tokens.is_empty() {
+        return Err(ApiError::invalid_request("No tokens provided"));
+    }
+    tokens = tokens
+        .into_iter()
+        .map(|t| t.trim().to_string())
+        .filter(|t| !t.is_empty())
+        .collect();
     tokens.dedup();
 
-    let max_tokens: usize = crate::core::config::get_config("performance.usage_max_tokens", 1000usize).await;
+    let max_tokens: usize =
+        crate::core::config::get_config("performance.usage_max_tokens", 1000usize).await;
     let original_count = tokens.len();
     let truncated = tokens.len() > max_tokens;
-    if truncated { tokens.truncate(max_tokens); }
+    if truncated {
+        tokens.truncate(max_tokens);
+    }
 
     let mut out = HashMap::new();
     for token in tokens.iter() {
         let ok = mgr
-            .sync_usage(token, "grok-3", crate::services::token::models::EffortType::Low, false, false)
+            .sync_usage(
+                token,
+                "grok-3",
+                crate::services::token::models::EffortType::Low,
+                false,
+                false,
+            )
             .await;
         out.insert(token.clone(), ok);
     }
 
     let mut response = json!({"status": "success", "results": out});
     if truncated {
-        response["warning"] = JsonValue::String(format!("数量超出限制，仅处理前 {max_tokens} 个（共 {original_count} 个）"));
+        response["warning"] = JsonValue::String(format!(
+            "数量超出限制，仅处理前 {max_tokens} 个（共 {original_count} 个）"
+        ));
     }
     Ok(Json(response).into_response())
 }
 
-async fn refresh_tokens_api_async(headers: HeaderMap, Json(data): Json<TokenRefreshRequest>) -> Result<Response, ApiError> {
+async fn refresh_tokens_api_async(
+    headers: HeaderMap,
+    Json(data): Json<TokenRefreshRequest>,
+) -> Result<Response, ApiError> {
     verify_api_key(&headers).await?;
     let mgr = get_token_manager().await;
 
     let mut tokens = Vec::new();
-    if let Some(t) = data.token { tokens.push(t); }
-    if let Some(list) = data.tokens { tokens.extend(list); }
-    if tokens.is_empty() { return Err(ApiError::invalid_request("No tokens provided")); }
-    tokens = tokens.into_iter().map(|t| t.trim().to_string()).filter(|t| !t.is_empty()).collect();
+    if let Some(t) = data.token {
+        tokens.push(t);
+    }
+    if let Some(list) = data.tokens {
+        tokens.extend(list);
+    }
+    if tokens.is_empty() {
+        return Err(ApiError::invalid_request("No tokens provided"));
+    }
+    tokens = tokens
+        .into_iter()
+        .map(|t| t.trim().to_string())
+        .filter(|t| !t.is_empty())
+        .collect();
     tokens.dedup();
 
-    let max_tokens: usize = crate::core::config::get_config("performance.usage_max_tokens", 1000usize).await;
+    let max_tokens: usize =
+        crate::core::config::get_config("performance.usage_max_tokens", 1000usize).await;
     let original_count = tokens.len();
     let truncated = tokens.len() > max_tokens;
-    if truncated { tokens.truncate(max_tokens); }
+    if truncated {
+        tokens.truncate(max_tokens);
+    }
 
-    let max_concurrent: usize = crate::core::config::get_config("performance.usage_max_concurrent", 25usize).await;
-    let batch_size: usize = crate::core::config::get_config("performance.usage_batch_size", 50usize).await;
+    let max_concurrent: usize =
+        crate::core::config::get_config("performance.usage_max_concurrent", 25usize).await;
+    let batch_size: usize =
+        crate::core::config::get_config("performance.usage_batch_size", 50usize).await;
 
     let task = create_task(tokens.len()).await;
 
@@ -207,7 +304,15 @@ async fn refresh_tokens_api_async(headers: HeaderMap, Json(data): Json<TokenRefr
                 let mgr = mgr.clone();
                 async move {
                     let mut mgr = mgr.lock().await;
-                    let ok = mgr.sync_usage(&token, "grok-3", crate::services::token::models::EffortType::Low, false, false).await;
+                    let ok = mgr
+                        .sync_usage(
+                            &token,
+                            "grok-3",
+                            crate::services::token::models::EffortType::Low,
+                            false,
+                            false,
+                        )
+                        .await;
                     Ok(ok)
                 }
             },
@@ -215,7 +320,8 @@ async fn refresh_tokens_api_async(headers: HeaderMap, Json(data): Json<TokenRefr
             batch_size,
             Some(on_item),
             None,
-        ).await;
+        )
+        .await;
 
         if task_for_spawn.lock().await.cancelled {
             task_for_spawn.lock().await.finish_cancelled();
@@ -227,8 +333,14 @@ async fn refresh_tokens_api_async(headers: HeaderMap, Json(data): Json<TokenRefr
         let mut fail_count = 0;
         for (token, res) in results {
             match res {
-                Ok(true) => { ok_count += 1; results_out.insert(token, true); }
-                _ => { fail_count += 1; results_out.insert(token, false); }
+                Ok(true) => {
+                    ok_count += 1;
+                    results_out.insert(token, true);
+                }
+                _ => {
+                    fail_count += 1;
+                    results_out.insert(token, false);
+                }
             }
         }
 
@@ -238,13 +350,18 @@ async fn refresh_tokens_api_async(headers: HeaderMap, Json(data): Json<TokenRefr
             "results": results_out,
         });
         if truncated_for_spawn {
-            result["warning"] = JsonValue::String(format!("数量超出限制，仅处理前 {max_tokens_for_spawn} 个（共 {original_count_for_spawn} 个）"));
+            result["warning"] = JsonValue::String(format!(
+                "数量超出限制，仅处理前 {max_tokens_for_spawn} 个（共 {original_count_for_spawn} 个）"
+            ));
         }
         task_for_spawn.lock().await.finish(result, if truncated_for_spawn { Some(format!("数量超出限制，仅处理前 {max_tokens_for_spawn} 个（共 {original_count_for_spawn} 个）")) } else { None });
         tokio::spawn(expire_task(task_id_for_spawn.clone(), 300));
     });
 
-    Ok(Json(json!({"status": "success", "task_id": task_id, "total": tokens.len()})).into_response())
+    Ok(
+        Json(json!({"status": "success", "task_id": task_id, "total": tokens.len()}))
+            .into_response(),
+    )
 }
 
 #[derive(Debug, Deserialize)]
@@ -253,14 +370,21 @@ struct NsfwRequest {
     tokens: Option<Vec<String>>,
 }
 
-async fn enable_nsfw_api(headers: HeaderMap, Json(data): Json<NsfwRequest>) -> Result<Response, ApiError> {
+async fn enable_nsfw_api(
+    headers: HeaderMap,
+    Json(data): Json<NsfwRequest>,
+) -> Result<Response, ApiError> {
     verify_api_key(&headers).await?;
     let mgr = get_token_manager().await;
     let service = NsfwService::new().await;
 
     let mut tokens = Vec::new();
-    if let Some(t) = data.token { tokens.push(t); }
-    if let Some(list) = data.tokens { tokens.extend(list); }
+    if let Some(t) = data.token {
+        tokens.push(t);
+    }
+    if let Some(list) = data.tokens {
+        tokens.extend(list);
+    }
     if tokens.is_empty() {
         let mgr_guard = mgr.lock().await;
         for pool in mgr_guard.pools.values() {
@@ -269,17 +393,28 @@ async fn enable_nsfw_api(headers: HeaderMap, Json(data): Json<NsfwRequest>) -> R
             }
         }
     }
-    if tokens.is_empty() { return Err(ApiError::invalid_request("No tokens available")); }
-    tokens = tokens.into_iter().map(|t| t.trim().to_string()).filter(|t| !t.is_empty()).collect();
+    if tokens.is_empty() {
+        return Err(ApiError::invalid_request("No tokens available"));
+    }
+    tokens = tokens
+        .into_iter()
+        .map(|t| t.trim().to_string())
+        .filter(|t| !t.is_empty())
+        .collect();
     tokens.dedup();
 
-    let max_tokens: usize = crate::core::config::get_config("performance.nsfw_max_tokens", 1000usize).await;
+    let max_tokens: usize =
+        crate::core::config::get_config("performance.nsfw_max_tokens", 1000usize).await;
     let original_count = tokens.len();
     let truncated = tokens.len() > max_tokens;
-    if truncated { tokens.truncate(max_tokens); }
+    if truncated {
+        tokens.truncate(max_tokens);
+    }
 
-    let max_concurrent: usize = crate::core::config::get_config("performance.nsfw_max_concurrent", 10usize).await;
-    let batch_size: usize = crate::core::config::get_config("performance.nsfw_batch_size", 50usize).await;
+    let max_concurrent: usize =
+        crate::core::config::get_config("performance.nsfw_max_concurrent", 10usize).await;
+    let batch_size: usize =
+        crate::core::config::get_config("performance.nsfw_batch_size", 50usize).await;
 
     let results = run_in_batches(
         tokens.clone(),
@@ -304,13 +439,18 @@ async fn enable_nsfw_api(headers: HeaderMap, Json(data): Json<NsfwRequest>) -> R
         batch_size,
         None,
         None,
-    ).await;
+    )
+    .await;
 
     let mut out = HashMap::new();
     let mut ok_count = 0;
     let mut fail_count = 0;
     for (token, res) in results {
-        let masked = if token.len() > 20 { format!("{}...{}", &token[..8], &token[token.len()-8..]) } else { token.clone() };
+        let masked = if token.len() > 20 {
+            format!("{}...{}", &token[..8], &token[token.len() - 8..])
+        } else {
+            token.clone()
+        };
         match res {
             Ok(data) => {
                 if data.get("success").and_then(|v| v.as_bool()) == Some(true) {
@@ -333,19 +473,28 @@ async fn enable_nsfw_api(headers: HeaderMap, Json(data): Json<NsfwRequest>) -> R
         "results": out,
     });
     if truncated {
-        response["warning"] = JsonValue::String(format!("数量超出限制，仅处理前 {max_tokens} 个（共 {original_count} 个）"));
+        response["warning"] = JsonValue::String(format!(
+            "数量超出限制，仅处理前 {max_tokens} 个（共 {original_count} 个）"
+        ));
     }
     Ok(Json(response).into_response())
 }
 
-async fn enable_nsfw_api_async(headers: HeaderMap, Json(data): Json<NsfwRequest>) -> Result<Response, ApiError> {
+async fn enable_nsfw_api_async(
+    headers: HeaderMap,
+    Json(data): Json<NsfwRequest>,
+) -> Result<Response, ApiError> {
     verify_api_key(&headers).await?;
     let mgr = get_token_manager().await;
     let service = NsfwService::new().await;
 
     let mut tokens = Vec::new();
-    if let Some(t) = data.token { tokens.push(t); }
-    if let Some(list) = data.tokens { tokens.extend(list); }
+    if let Some(t) = data.token {
+        tokens.push(t);
+    }
+    if let Some(list) = data.tokens {
+        tokens.extend(list);
+    }
     if tokens.is_empty() {
         let mgr_guard = mgr.lock().await;
         for pool in mgr_guard.pools.values() {
@@ -354,17 +503,28 @@ async fn enable_nsfw_api_async(headers: HeaderMap, Json(data): Json<NsfwRequest>
             }
         }
     }
-    if tokens.is_empty() { return Err(ApiError::invalid_request("No tokens available")); }
-    tokens = tokens.into_iter().map(|t| t.trim().to_string()).filter(|t| !t.is_empty()).collect();
+    if tokens.is_empty() {
+        return Err(ApiError::invalid_request("No tokens available"));
+    }
+    tokens = tokens
+        .into_iter()
+        .map(|t| t.trim().to_string())
+        .filter(|t| !t.is_empty())
+        .collect();
     tokens.dedup();
 
-    let max_tokens: usize = crate::core::config::get_config("performance.nsfw_max_tokens", 1000usize).await;
+    let max_tokens: usize =
+        crate::core::config::get_config("performance.nsfw_max_tokens", 1000usize).await;
     let original_count = tokens.len();
     let truncated = tokens.len() > max_tokens;
-    if truncated { tokens.truncate(max_tokens); }
+    if truncated {
+        tokens.truncate(max_tokens);
+    }
 
-    let max_concurrent: usize = crate::core::config::get_config("performance.nsfw_max_concurrent", 10usize).await;
-    let batch_size: usize = crate::core::config::get_config("performance.nsfw_batch_size", 50usize).await;
+    let max_concurrent: usize =
+        crate::core::config::get_config("performance.nsfw_max_concurrent", 10usize).await;
+    let batch_size: usize =
+        crate::core::config::get_config("performance.nsfw_batch_size", 50usize).await;
 
     let task = create_task(tokens.len()).await;
     let task_id = task.lock().await.id.clone();
@@ -404,7 +564,8 @@ async fn enable_nsfw_api_async(headers: HeaderMap, Json(data): Json<NsfwRequest>
             batch_size,
             Some(on_item),
             None,
-        ).await;
+        )
+        .await;
 
         if task_for_spawn.lock().await.cancelled {
             task_for_spawn.lock().await.finish_cancelled();
@@ -415,12 +576,18 @@ async fn enable_nsfw_api_async(headers: HeaderMap, Json(data): Json<NsfwRequest>
         let mut ok_count = 0;
         let mut fail_count = 0;
         for (token, res) in results {
-            let masked = if token.len() > 20 { format!("{}...{}", &token[..8], &token[token.len()-8..]) } else { token.clone() };
+            let masked = if token.len() > 20 {
+                format!("{}...{}", &token[..8], &token[token.len() - 8..])
+            } else {
+                token.clone()
+            };
             match res {
                 Ok(data) => {
                     if data.get("success").and_then(|v| v.as_bool()) == Some(true) {
                         ok_count += 1;
-                    } else { fail_count += 1; }
+                    } else {
+                        fail_count += 1;
+                    }
                     out.insert(masked, data);
                 }
                 Err(err) => {
@@ -436,13 +603,27 @@ async fn enable_nsfw_api_async(headers: HeaderMap, Json(data): Json<NsfwRequest>
             "results": out,
         });
         if truncated {
-            result["warning"] = JsonValue::String(format!("数量超出限制，仅处理前 {max_tokens} 个（共 {original_count} 个）"));
+            result["warning"] = JsonValue::String(format!(
+                "数量超出限制，仅处理前 {max_tokens} 个（共 {original_count} 个）"
+            ));
         }
-        task_for_spawn.lock().await.finish(result.clone(), if truncated { Some(format!("数量超出限制，仅处理前 {max_tokens} 个（共 {original_count} 个）")) } else { None });
+        task_for_spawn.lock().await.finish(
+            result.clone(),
+            if truncated {
+                Some(format!(
+                    "数量超出限制，仅处理前 {max_tokens} 个（共 {original_count} 个）"
+                ))
+            } else {
+                None
+            },
+        );
         tokio::spawn(expire_task(task_id_for_spawn.clone(), 300));
     });
 
-    Ok(Json(json!({"status": "success", "task_id": task_id, "total": tokens.len()})).into_response())
+    Ok(
+        Json(json!({"status": "success", "task_id": task_id, "total": tokens.len()}))
+            .into_response(),
+    )
 }
 
 #[derive(Debug, Deserialize)]
@@ -452,7 +633,10 @@ struct CacheQuery {
     scope: Option<String>,
 }
 
-async fn get_cache_stats_api(headers: HeaderMap, Query(query): Query<CacheQuery>) -> Result<Response, ApiError> {
+async fn get_cache_stats_api(
+    headers: HeaderMap,
+    Query(query): Query<CacheQuery>,
+) -> Result<Response, ApiError> {
     verify_api_key(&headers).await?;
 
     let dl = DownloadService::new().await;
@@ -472,7 +656,11 @@ async fn get_cache_stats_api(headers: HeaderMap, Query(query): Query<CacheQuery>
     for (pool_name, pool) in &mgr_guard.pools {
         for info in pool.list() {
             let raw = info.token.clone();
-            let masked = if raw.len() > 24 { format!("{}...{}", &raw[..8], &raw[raw.len()-16..]) } else { raw.clone() };
+            let masked = if raw.len() > 24 {
+                format!("{}...{}", &raw[..8], &raw[raw.len() - 16..])
+            } else {
+                raw.clone()
+            };
             accounts.push(json!({
                 "token": raw,
                 "token_masked": masked,
@@ -485,22 +673,31 @@ async fn get_cache_stats_api(headers: HeaderMap, Query(query): Query<CacheQuery>
 
     let mut selected_tokens: Vec<String> = Vec::new();
     if let Some(tokens) = &query.tokens {
-        selected_tokens = tokens.split(',').map(|t| t.trim().to_string()).filter(|t| !t.is_empty()).collect();
+        selected_tokens = tokens
+            .split(',')
+            .map(|t| t.trim().to_string())
+            .filter(|t| !t.is_empty())
+            .collect();
     }
     let scope = query.scope.clone();
     let selected_token = query.token.clone();
 
-    let mut online_stats = json!({"count":0,"status":"unknown","token":null,"last_asset_clear_at":null});
+    let mut online_stats =
+        json!({"count":0,"status":"unknown","token":null,"last_asset_clear_at":null});
     let mut online_details = Vec::new();
 
-    let max_tokens: usize = crate::core::config::get_config("performance.assets_max_tokens", 1000usize).await;
+    let max_tokens: usize =
+        crate::core::config::get_config("performance.assets_max_tokens", 1000usize).await;
     let mut truncated = false;
     let mut original_count = 0usize;
 
     if !selected_tokens.is_empty() {
         selected_tokens.dedup();
         original_count = selected_tokens.len();
-        if selected_tokens.len() > max_tokens { selected_tokens.truncate(max_tokens); truncated = true; }
+        if selected_tokens.len() > max_tokens {
+            selected_tokens.truncate(max_tokens);
+            truncated = true;
+        }
         let list_service = ListService::new().await;
         let mut total = 0usize;
         for token in &selected_tokens {
@@ -514,12 +711,23 @@ async fn get_cache_stats_api(headers: HeaderMap, Query(query): Query<CacheQuery>
                 }
             }
         }
-        online_stats = json!({"count": total, "status": "ok", "token": null, "last_asset_clear_at": null});
+        online_stats =
+            json!({"count": total, "status": "ok", "token": null, "last_asset_clear_at": null});
     } else if scope.as_deref() == Some("all") {
-        let tokens: Vec<String> = accounts.iter().filter_map(|a| a.get("token").and_then(|v| v.as_str()).map(|s| s.to_string())).collect();
+        let tokens: Vec<String> = accounts
+            .iter()
+            .filter_map(|a| {
+                a.get("token")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string())
+            })
+            .collect();
         original_count = tokens.len();
         let mut tokens = tokens;
-        if tokens.len() > max_tokens { tokens.truncate(max_tokens); truncated = true; }
+        if tokens.len() > max_tokens {
+            tokens.truncate(max_tokens);
+            truncated = true;
+        }
         let list_service = ListService::new().await;
         let mut total = 0usize;
         for token in &tokens {
@@ -558,7 +766,9 @@ async fn get_cache_stats_api(headers: HeaderMap, Query(query): Query<CacheQuery>
         "online_details": online_details,
     });
     if truncated {
-        response["warning"] = JsonValue::String(format!("数量超出限制，仅处理前 {max_tokens} 个（共 {original_count} 个）"));
+        response["warning"] = JsonValue::String(format!(
+            "数量超出限制，仅处理前 {max_tokens} 个（共 {original_count} 个）"
+        ));
     }
     Ok(Json(response).into_response())
 }
@@ -569,7 +779,10 @@ struct CacheClearRequest {
     cache_type: Option<String>,
 }
 
-async fn clear_local_cache_api(headers: HeaderMap, Json(data): Json<CacheClearRequest>) -> Result<Response, ApiError> {
+async fn clear_local_cache_api(
+    headers: HeaderMap,
+    Json(data): Json<CacheClearRequest>,
+) -> Result<Response, ApiError> {
     verify_api_key(&headers).await?;
     let cache_type = data.cache_type.unwrap_or_else(|| "image".to_string());
     let dl = DownloadService::new().await;
@@ -585,7 +798,10 @@ struct CacheListQuery {
     page_size: Option<usize>,
 }
 
-async fn list_local_cache_api(headers: HeaderMap, Query(query): Query<CacheListQuery>) -> Result<Response, ApiError> {
+async fn list_local_cache_api(
+    headers: HeaderMap,
+    Query(query): Query<CacheListQuery>,
+) -> Result<Response, ApiError> {
     verify_api_key(&headers).await?;
     let cache_type = query.cache_type.unwrap_or_else(|| "image".to_string());
     let page = query.page.unwrap_or(1);
@@ -602,10 +818,15 @@ struct CacheDeleteRequest {
     name: Option<String>,
 }
 
-async fn delete_local_cache_item_api(headers: HeaderMap, Json(data): Json<CacheDeleteRequest>) -> Result<Response, ApiError> {
+async fn delete_local_cache_item_api(
+    headers: HeaderMap,
+    Json(data): Json<CacheDeleteRequest>,
+) -> Result<Response, ApiError> {
     verify_api_key(&headers).await?;
     let cache_type = data.cache_type.unwrap_or_else(|| "image".to_string());
-    let name = data.name.ok_or_else(|| ApiError::invalid_request("Missing file name"))?;
+    let name = data
+        .name
+        .ok_or_else(|| ApiError::invalid_request("Missing file name"))?;
     let dl = DownloadService::new().await;
     let result = dl.delete_file(&cache_type, &name);
     Ok(Json(json!({"status": "success", "result": result})).into_response())
@@ -617,60 +838,98 @@ struct OnlineClearRequest {
     tokens: Option<Vec<String>>,
 }
 
-async fn clear_online_cache_api(headers: HeaderMap, Json(data): Json<OnlineClearRequest>) -> Result<Response, ApiError> {
+async fn clear_online_cache_api(
+    headers: HeaderMap,
+    Json(data): Json<OnlineClearRequest>,
+) -> Result<Response, ApiError> {
     verify_api_key(&headers).await?;
     let mgr = get_token_manager().await;
     let mut mgr = mgr.lock().await;
     let service = DeleteService::new().await;
 
     if let Some(tokens) = data.tokens {
-        let mut token_list = tokens.into_iter().map(|t| t.trim().to_string()).filter(|t| !t.is_empty()).collect::<Vec<_>>();
-        if token_list.is_empty() { return Err(ApiError::invalid_request("No tokens provided")); }
+        let mut token_list = tokens
+            .into_iter()
+            .map(|t| t.trim().to_string())
+            .filter(|t| !t.is_empty())
+            .collect::<Vec<_>>();
+        if token_list.is_empty() {
+            return Err(ApiError::invalid_request("No tokens provided"));
+        }
         token_list.dedup();
-        let max_tokens: usize = crate::core::config::get_config("performance.assets_max_tokens", 1000usize).await;
+        let max_tokens: usize =
+            crate::core::config::get_config("performance.assets_max_tokens", 1000usize).await;
         let original_count = token_list.len();
         let truncated = token_list.len() > max_tokens;
-        if truncated { token_list.truncate(max_tokens); }
+        if truncated {
+            token_list.truncate(max_tokens);
+        }
 
         let mut results = HashMap::new();
         for token in &token_list {
             match service.delete_all(token).await {
                 Ok(result) => {
                     mgr.mark_asset_clear(token).await;
-                    results.insert(token.clone(), json!({"status": "success", "result": result}));
+                    results.insert(
+                        token.clone(),
+                        json!({"status": "success", "result": result}),
+                    );
                 }
                 Err(e) => {
-                    results.insert(token.clone(), json!({"status": "error", "error": e.to_string()}));
+                    results.insert(
+                        token.clone(),
+                        json!({"status": "error", "error": e.to_string()}),
+                    );
                 }
             }
         }
         let mut response = json!({"status": "success", "results": results});
         if truncated {
-            response["warning"] = JsonValue::String(format!("数量超出限制，仅处理前 {max_tokens} 个（共 {original_count} 个）"));
+            response["warning"] = JsonValue::String(format!(
+                "数量超出限制，仅处理前 {max_tokens} 个（共 {original_count} 个）"
+            ));
         }
         return Ok(Json(response).into_response());
     }
 
     let token = data.token.or_else(|| mgr.get_token("ssoBasic"));
-    let token = token.ok_or_else(|| ApiError::invalid_request("No available token to perform cleanup"))?;
-    let result = service.delete_all(&token).await.map_err(|e| ApiError::server(e.to_string()))?;
+    let token =
+        token.ok_or_else(|| ApiError::invalid_request("No available token to perform cleanup"))?;
+    let result = service
+        .delete_all(&token)
+        .await
+        .map_err(|e| ApiError::server(e.to_string()))?;
     mgr.mark_asset_clear(&token).await;
     Ok(Json(json!({"status": "success", "result": result})).into_response())
 }
 
-async fn clear_online_cache_api_async(headers: HeaderMap, Json(data): Json<OnlineClearRequest>) -> Result<Response, ApiError> {
+async fn clear_online_cache_api_async(
+    headers: HeaderMap,
+    Json(data): Json<OnlineClearRequest>,
+) -> Result<Response, ApiError> {
     verify_api_key(&headers).await?;
     let mgr = get_token_manager().await;
     let service = DeleteService::new().await;
 
-    let tokens = data.tokens.ok_or_else(|| ApiError::invalid_request("No tokens provided"))?;
-    let mut token_list = tokens.into_iter().map(|t| t.trim().to_string()).filter(|t| !t.is_empty()).collect::<Vec<_>>();
-    if token_list.is_empty() { return Err(ApiError::invalid_request("No tokens provided")); }
+    let tokens = data
+        .tokens
+        .ok_or_else(|| ApiError::invalid_request("No tokens provided"))?;
+    let mut token_list = tokens
+        .into_iter()
+        .map(|t| t.trim().to_string())
+        .filter(|t| !t.is_empty())
+        .collect::<Vec<_>>();
+    if token_list.is_empty() {
+        return Err(ApiError::invalid_request("No tokens provided"));
+    }
     token_list.dedup();
-    let max_tokens: usize = crate::core::config::get_config("performance.assets_max_tokens", 1000usize).await;
+    let max_tokens: usize =
+        crate::core::config::get_config("performance.assets_max_tokens", 1000usize).await;
     let original_count = token_list.len();
     let truncated = token_list.len() > max_tokens;
-    if truncated { token_list.truncate(max_tokens); }
+    if truncated {
+        token_list.truncate(max_tokens);
+    }
 
     let task = create_task(token_list.len()).await;
     let task_id = task.lock().await.id.clone();
@@ -709,7 +968,8 @@ async fn clear_online_cache_api_async(headers: HeaderMap, Json(data): Json<Onlin
             crate::core::config::get_config("performance.assets_batch_size", 10usize).await,
             Some(on_item),
             None,
-        ).await;
+        )
+        .await;
 
         if task_for_spawn.lock().await.cancelled {
             task_for_spawn.lock().await.finish_cancelled();
@@ -723,19 +983,28 @@ async fn clear_online_cache_api_async(headers: HeaderMap, Json(data): Json<Onlin
             if let Ok(data) = res {
                 if data.get("status").and_then(|v| v.as_str()) == Some("success") {
                     ok_count += 1;
-                } else { fail_count += 1; }
+                } else {
+                    fail_count += 1;
+                }
                 out.insert(token, data);
-            } else { fail_count += 1; }
+            } else {
+                fail_count += 1;
+            }
         }
         let mut result = json!({"status": "success", "summary": {"total": token_list_for_spawn.len(), "ok": ok_count, "fail": fail_count}, "results": out});
         if truncated_for_spawn {
-            result["warning"] = JsonValue::String(format!("数量超出限制，仅处理前 {max_tokens_for_spawn} 个（共 {original_count_for_spawn} 个）"));
+            result["warning"] = JsonValue::String(format!(
+                "数量超出限制，仅处理前 {max_tokens_for_spawn} 个（共 {original_count_for_spawn} 个）"
+            ));
         }
         task_for_spawn.lock().await.finish(result, if truncated_for_spawn { Some(format!("数量超出限制，仅处理前 {max_tokens_for_spawn} 个（共 {original_count_for_spawn} 个）")) } else { None });
         tokio::spawn(expire_task(task_id_for_spawn.clone(), 300));
     });
 
-    Ok(Json(json!({"status": "success", "task_id": task_id, "total": token_list.len()})).into_response())
+    Ok(
+        Json(json!({"status": "success", "task_id": task_id, "total": token_list.len()}))
+            .into_response(),
+    )
 }
 
 #[derive(Debug, Deserialize)]
@@ -744,7 +1013,10 @@ struct LoadOnlineRequest {
     scope: Option<String>,
 }
 
-async fn load_online_cache_api_async(headers: HeaderMap, Json(data): Json<LoadOnlineRequest>) -> Result<Response, ApiError> {
+async fn load_online_cache_api_async(
+    headers: HeaderMap,
+    Json(data): Json<LoadOnlineRequest>,
+) -> Result<Response, ApiError> {
     verify_api_key(&headers).await?;
     let mgr = get_token_manager().await;
     let mgr_guard = mgr.lock().await;
@@ -752,7 +1024,11 @@ async fn load_online_cache_api_async(headers: HeaderMap, Json(data): Json<LoadOn
     for (pool_name, pool) in &mgr_guard.pools {
         for info in pool.list() {
             let raw = info.token.clone();
-            let masked = if raw.len() > 24 { format!("{}...{}", &raw[..8], &raw[raw.len()-16..]) } else { raw.clone() };
+            let masked = if raw.len() > 24 {
+                format!("{}...{}", &raw[..8], &raw[raw.len() - 16..])
+            } else {
+                raw.clone()
+            };
             accounts.push(json!({"token": raw, "token_masked": masked, "pool": pool_name, "status": format!("{:?}", info.status).to_lowercase(), "last_asset_clear_at": info.last_asset_clear_at}));
         }
     }
@@ -760,22 +1036,38 @@ async fn load_online_cache_api_async(headers: HeaderMap, Json(data): Json<LoadOn
 
     let mut tokens = Vec::new();
     let mut scope = data.scope.unwrap_or_else(|| "none".to_string());
-    if let Some(list) = data.tokens { tokens = list; }
+    if let Some(list) = data.tokens {
+        tokens = list;
+    }
     if tokens.is_empty() && scope == "all" {
-        tokens = accounts.iter().filter_map(|a| a.get("token").and_then(|v| v.as_str()).map(|s| s.to_string())).collect();
+        tokens = accounts
+            .iter()
+            .filter_map(|a| {
+                a.get("token")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string())
+            })
+            .collect();
         scope = "all".to_string();
     } else if !tokens.is_empty() {
         scope = "selected".to_string();
     } else {
         return Err(ApiError::invalid_request("No tokens provided"));
     }
-    tokens = tokens.into_iter().map(|t| t.trim().to_string()).filter(|t| !t.is_empty()).collect();
+    tokens = tokens
+        .into_iter()
+        .map(|t| t.trim().to_string())
+        .filter(|t| !t.is_empty())
+        .collect();
     tokens.dedup();
 
-    let max_tokens: usize = crate::core::config::get_config("performance.assets_max_tokens", 1000usize).await;
+    let max_tokens: usize =
+        crate::core::config::get_config("performance.assets_max_tokens", 1000usize).await;
     let original_count = tokens.len();
     let truncated = tokens.len() > max_tokens;
-    if truncated { tokens.truncate(max_tokens); }
+    if truncated {
+        tokens.truncate(max_tokens);
+    }
 
     let task = create_task(tokens.len()).await;
     let task_id = task.lock().await.id.clone();
@@ -805,7 +1097,9 @@ async fn load_online_cache_api_async(headers: HeaderMap, Json(data): Json<LoadOn
                 async move {
                     match list_service.count(&token).await {
                         Ok(count) => Ok(json!({"token": token, "count": count, "status": "ok"})),
-                        Err(e) => Ok(json!({"token": token, "count": 0, "status": format!("error: {e}")})),
+                        Err(e) => {
+                            Ok(json!({"token": token, "count": 0, "status": format!("error: {e}")}))
+                        }
                     }
                 }
             },
@@ -813,7 +1107,8 @@ async fn load_online_cache_api_async(headers: HeaderMap, Json(data): Json<LoadOn
             crate::core::config::get_config("performance.assets_batch_size", 10usize).await,
             Some(on_item),
             None,
-        ).await;
+        )
+        .await;
 
         let mut online_details = Vec::new();
         let mut total = 0usize;
@@ -846,13 +1141,18 @@ async fn load_online_cache_api_async(headers: HeaderMap, Json(data): Json<LoadOn
             "online_details": online_details,
         });
         if truncated_for_spawn {
-            result["warning"] = JsonValue::String(format!("数量超出限制，仅处理前 {max_tokens_for_spawn} 个（共 {original_count_for_spawn} 个）"));
+            result["warning"] = JsonValue::String(format!(
+                "数量超出限制，仅处理前 {max_tokens_for_spawn} 个（共 {original_count_for_spawn} 个）"
+            ));
         }
         task_for_spawn.lock().await.finish(result.clone(), if truncated_for_spawn { Some(format!("数量超出限制，仅处理前 {max_tokens_for_spawn} 个（共 {original_count_for_spawn} 个）")) } else { None });
         tokio::spawn(expire_task(task_id_for_spawn.clone(), 300));
     });
 
-    Ok(Json(json!({"status": "success", "task_id": task_id, "total": tokens.len()})).into_response())
+    Ok(
+        Json(json!({"status": "success", "task_id": task_id, "total": tokens.len()}))
+            .into_response(),
+    )
 }
 
 #[derive(Debug, Deserialize)]
@@ -860,9 +1160,14 @@ struct StreamQuery {
     api_key: Option<String>,
 }
 
-async fn stream_batch(Path(task_id): Path<String>, Query(query): Query<StreamQuery>) -> Result<Response, ApiError> {
+async fn stream_batch(
+    Path(task_id): Path<String>,
+    Query(query): Query<StreamQuery>,
+) -> Result<Response, ApiError> {
     verify_stream_api_key(query.api_key).await?;
-    let task = get_task(&task_id).await.ok_or_else(|| ApiError::not_found("Task not found"))?;
+    let task = get_task(&task_id)
+        .await
+        .ok_or_else(|| ApiError::not_found("Task not found"))?;
     let mut rx = task.lock().await.attach();
 
     let stream = stream! {
@@ -899,9 +1204,14 @@ async fn stream_batch(Path(task_id): Path<String>, Query(query): Query<StreamQue
     Ok(Sse::new(stream).into_response())
 }
 
-async fn cancel_batch(headers: HeaderMap, Path(task_id): Path<String>) -> Result<Response, ApiError> {
+async fn cancel_batch(
+    headers: HeaderMap,
+    Path(task_id): Path<String>,
+) -> Result<Response, ApiError> {
     verify_api_key(&headers).await?;
-    let task = get_task(&task_id).await.ok_or_else(|| ApiError::not_found("Task not found"))?;
+    let task = get_task(&task_id)
+        .await
+        .ok_or_else(|| ApiError::not_found("Task not found"))?;
     task.lock().await.cancel();
     Ok(Json(json!({"status": "success"})).into_response())
 }

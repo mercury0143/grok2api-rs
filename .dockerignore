@@ -1,0 +1,13 @@
+.git
+.github
+.vscode
+.idea
+
+.DS_Store
+*.log
+
+/target
+/dist
+/data
+
+/docs

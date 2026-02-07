@@ -59,12 +59,18 @@ impl ModelService {
             ),
             ModelInfo::new("grok-4-fast", "grok-4", "MODEL_MODE_FAST", "Grok 4 Fast"),
             {
-                let mut m = ModelInfo::new("grok-4-heavy", "grok-4", "MODEL_MODE_HEAVY", "Grok 4 Heavy");
+                let mut m =
+                    ModelInfo::new("grok-4-heavy", "grok-4", "MODEL_MODE_HEAVY", "Grok 4 Heavy");
                 m.tier = Tier::Super;
                 m.cost = Cost::High;
                 m
             },
-            ModelInfo::new("grok-4.1", "grok-4-1-thinking-1129", "MODEL_MODE_AUTO", "Grok 4.1"),
+            ModelInfo::new(
+                "grok-4.1",
+                "grok-4-1-thinking-1129",
+                "MODEL_MODE_AUTO",
+                "Grok 4.1",
+            ),
             {
                 let mut m = ModelInfo::new(
                     "grok-4.1-thinking",
@@ -76,7 +82,12 @@ impl ModelService {
                 m
             },
             {
-                let mut m = ModelInfo::new("grok-imagine-1.0", "grok-3", "MODEL_MODE_FAST", "Grok Image");
+                let mut m = ModelInfo::new(
+                    "grok-imagine-1.0",
+                    "grok-3",
+                    "MODEL_MODE_FAST",
+                    "Grok Image",
+                );
                 m.cost = Cost::High;
                 m.is_image = true;
                 m.description = "Image generation model".to_string();

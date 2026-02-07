@@ -1,6 +1,6 @@
+use axum::Json;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
-use axum::Json;
 use serde::Serialize;
 
 #[derive(Debug, Clone, Serialize)]
@@ -87,13 +87,21 @@ impl ApiError {
     }
 
     pub fn rate_limit(message: impl Into<String>) -> Self {
-        ApiError::new(StatusCode::TOO_MANY_REQUESTS, message, ErrorType::RateLimitError)
-            .with_code("rate_limit_exceeded")
+        ApiError::new(
+            StatusCode::TOO_MANY_REQUESTS,
+            message,
+            ErrorType::RateLimitError,
+        )
+        .with_code("rate_limit_exceeded")
     }
 
     pub fn server(message: impl Into<String>) -> Self {
-        ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, message, ErrorType::ServerError)
-            .with_code("internal_error")
+        ApiError::new(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            message,
+            ErrorType::ServerError,
+        )
+        .with_code("internal_error")
     }
 
     pub fn upstream(message: impl Into<String>) -> Self {

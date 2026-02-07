@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Grok2API-rs - 对话</title>
+  <link rel="icon" href="/static/favicon/favicon.ico">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://cdn.jsdelivr.net/npm/geist@1.0.0/dist/fonts/geist-sans/style.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/geist@1.0.0/dist/fonts/geist-mono/style.css" rel="stylesheet">
+  <link href="/static/common/common.css?v=3" rel="stylesheet">
+  <link href="/static/common/toast.css" rel="stylesheet">
+  <link href="/static/dialog/dialog.css?v=4" rel="stylesheet">
+</head>
+
+<body class="min-h-screen flex flex-col" style="background-color: var(--bg);">
+  <div id="toast-container" class="toast-container"></div>
+  <div id="app-header"></div>
+
+  <main class="space-y-6 flex-1 container mx-auto max-w-[1360px] px-6 py-8 fade-in">
+    <div class="space-y-4">
+      <div>
+        <h2 class="text-2xl font-semibold tracking-tight">对话</h2>
+        <p class="text-[var(--accents-4)] mt-1 text-sm">左侧查看对话，右侧配置接口并输入提示词（支持文本流式与图片渲染）。</p>
+      </div>
+
+      <div class="dialog-layout">
+        <section class="dialog-column dialog-left">
+          <div id="dialog-messages" class="dialog-card dialog-messages" aria-live="polite"></div>
+        </section>
+
+        <aside class="dialog-column dialog-right space-y-4">
+          <div class="dialog-card">
+            <div class="dialog-form-grid">
+              <div>
+                <label class="dialog-label" for="api-select">API</label>
+                <select id="api-select" class="geist-input">
+                  <option value="chat">Chat Completions</option>
+                  <option value="responses">Responses API</option>
+                  <option value="images">Images Generations</option>
+                  <option value="images_nsfw">Images NSFW</option>
+                </select>
+              </div>
+
+              <div id="model-group">
+                <label class="dialog-label" for="model-input">模型</label>
+                <input id="model-input" type="text" class="geist-input" value="grok-4" placeholder="例如 grok-4">
+              </div>
+
+              <div id="stream-group">
+                <label class="dialog-label" for="stream-toggle">流式</label>
+                <label class="inline-flex items-center gap-2 h-[34px]">
+                  <input id="stream-toggle" type="checkbox" class="checkbox" checked>
+                  <span class="text-xs text-[var(--accents-5)]">启用 SSE</span>
+                </label>
+              </div>
+
+              <div id="image-params" class="dialog-form-grid image-only hidden">
+                <div>
+                  <label class="dialog-label" for="image-count">图片数量</label>
+                  <input id="image-count" type="number" min="1" max="4" value="1" class="geist-input">
+                </div>
+                <div>
+                  <label class="dialog-label" for="image-size">尺寸</label>
+                  <select id="image-size" class="geist-input">
+                    <option value="1024x1024">1024x1024</option>
+                    <option value="1024x1792">1024x1792</option>
+                    <option value="1792x1024">1792x1024</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="dialog-label" for="response-format">返回格式</label>
+                  <select id="response-format" class="geist-input">
+                    <option value="url">url</option>
+                    <option value="b64_json">b64_json</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="dialog-card">
+            <label class="dialog-label" for="user-input">提示词</label>
+            <textarea id="user-input" class="geist-input dialog-textarea" placeholder="输入你的问题或提示词..." rows="8"></textarea>
+            <div class="flex items-center justify-end gap-2 mt-3">
+              <button id="clear-btn" type="button" class="geist-button-outline text-xs px-3">清空对话</button>
+              <button id="send-btn" type="button" class="geist-button text-xs px-4">发送</button>
+            </div>
+          </div>
+        </aside>
+      </div>
+    </div>
+  </main>
+
+  <div id="app-footer"></div>
+
+  <script src="/static/common/admin-auth.js?v=2"></script>
+  <script src="/static/common/header.js?v=6"></script>
+  <script src="/static/common/footer.js?v=4"></script>
+  <script src="/static/common/toast.js"></script>
+  <script src="/static/dialog/dialog.js?v=2"></script>
+</body>
+
+</html>

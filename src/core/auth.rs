@@ -4,7 +4,10 @@ use crate::core::config::get_config;
 use crate::core::exceptions::ApiError;
 
 fn extract_bearer(headers: &HeaderMap) -> Option<String> {
-    let auth = headers.get(axum::http::header::AUTHORIZATION)?.to_str().ok()?;
+    let auth = headers
+        .get(axum::http::header::AUTHORIZATION)?
+        .to_str()
+        .ok()?;
     if let Some(rest) = auth.strip_prefix("Bearer ") {
         return Some(rest.trim().to_string());
     }
@@ -43,7 +46,10 @@ pub async fn verify_stream_api_key(query_key: Option<String>) -> Result<(), ApiE
         return Ok(());
     }
     if let Some(q) = query_key {
-        let raw = q.strip_prefix("Bearer ").map(|v| v.trim()).unwrap_or(q.trim());
+        let raw = q
+            .strip_prefix("Bearer ")
+            .map(|v| v.trim())
+            .unwrap_or(q.trim());
         if raw == api_key {
             return Ok(());
         }

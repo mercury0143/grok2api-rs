@@ -24,6 +24,13 @@ const ENDPOINTS = [
     desc: '图片生成接口'
   },
   {
+    key: 'enable_images_nsfw',
+    name: 'Images NSFW',
+    method: 'POST',
+    path: '/v1/images/generations/nsfw',
+    desc: 'NSFW 专用图片生成接口（会自动尝试开启 Token 的 NSFW 开关）'
+  },
+  {
     key: 'enable_models',
     name: 'Models',
     method: 'GET',

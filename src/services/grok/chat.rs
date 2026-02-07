@@ -1,21 +1,18 @@
 use std::pin::Pin;
-use std::process::Stdio;
-use std::time::Duration;
 
-use futures::{Stream, StreamExt, TryStreamExt};
-use reqwest::Client;
+use futures::Stream;
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
-use tokio::io::AsyncReadExt;
-use tokio::process::Command;
-use tokio_util::codec::{FramedRead, LinesCodec};
-use tokio_util::io::StreamReader;
+use std::time::Duration;
 
 use crate::core::config::get_config;
 use crate::core::exceptions::ApiError;
 use crate::services::grok::assets::UploadService;
 use crate::services::grok::model::ModelService;
 use crate::services::grok::statsig::StatsigService;
+use crate::services::grok::wreq_client::{
+    apply_headers, body_preview, build_client, line_stream_from_response,
+};
 use crate::services::token::TokenService;
 
 const CHAT_API: &str = "https://grok.com/rest/app-chat/conversations/new";
@@ -31,7 +28,10 @@ pub struct ChatRequest {
 pub struct MessageExtractor;
 
 impl MessageExtractor {
-    pub fn extract(messages: &[JsonValue], is_video: bool) -> Result<(String, Vec<(String, String)>), ApiError> {
+    pub fn extract(
+        messages: &[JsonValue],
+        is_video: bool,
+    ) -> Result<(String, Vec<(String, String)>), ApiError> {
         let mut texts: Vec<String> = Vec::new();
         let mut attachments: Vec<(String, String)> = Vec::new();
         let mut extracted: Vec<(String, String)> = Vec::new();
@@ -58,7 +58,9 @@ impl MessageExtractor {
                             }
                             "image_url" => {
                                 if let Some(url_obj) = item.get("image_url") {
-                                    let url = if let Some(u) = url_obj.get("url").and_then(|v| v.as_str()) {
+                                    let url = if let Some(u) =
+                                        url_obj.get("url").and_then(|v| v.as_str())
+                                    {
                                         u.to_string()
                                     } else if let Some(u) = url_obj.as_str() {
                                         u.to_string()
@@ -72,10 +74,14 @@ impl MessageExtractor {
                             }
                             "input_audio" => {
                                 if is_video {
-                                    return Err(ApiError::invalid_request("视频模型不支持 input_audio 类型"));
+                                    return Err(ApiError::invalid_request(
+                                        "视频模型不支持 input_audio 类型",
+                                    ));
                                 }
                                 if let Some(audio_obj) = item.get("input_audio") {
-                                    let data = if let Some(d) = audio_obj.get("data").and_then(|v| v.as_str()) {
+                                    let data = if let Some(d) =
+                                        audio_obj.get("data").and_then(|v| v.as_str())
+                                    {
                                         d.to_string()
                                     } else if let Some(d) = audio_obj.as_str() {
                                         d.to_string()
@@ -89,10 +95,14 @@ impl MessageExtractor {
                             }
                             "file" => {
                                 if is_video {
-                                    return Err(ApiError::invalid_request("视频模型不支持 file 类型"));
+                                    return Err(ApiError::invalid_request(
+                                        "视频模型不支持 file 类型",
+                                    ));
                                 }
                                 if let Some(file_obj) = item.get("file") {
-                                    let url = file_obj.get("url").and_then(|v| v.as_str())
+                                    let url = file_obj
+                                        .get("url")
+                                        .and_then(|v| v.as_str())
                                         .or_else(|| file_obj.get("data").and_then(|v| v.as_str()))
                                         .or_else(|| file_obj.as_str())
                                         .unwrap_or("");
@@ -122,7 +132,11 @@ impl MessageExtractor {
             if Some(i) == last_user {
                 texts.push(text.clone());
             } else {
-                texts.push(format!("{}: {}", if role.is_empty() { "user" } else { role }, text));
+                texts.push(format!(
+                    "{}: {}",
+                    if role.is_empty() { "user" } else { role },
+                    text
+                ));
             }
         }
 
@@ -136,7 +150,10 @@ impl ChatRequestBuilder {
     pub async fn build_headers(token: &str) -> reqwest::header::HeaderMap {
         let mut headers = reqwest::header::HeaderMap::new();
         headers.insert("Accept", "*/*".parse().unwrap());
-        headers.insert("Accept-Encoding", "gzip, deflate, br, zstd".parse().unwrap());
+        headers.insert(
+            "Accept-Encoding",
+            "gzip, deflate, br, zstd".parse().unwrap(),
+        );
         headers.insert("Accept-Language", "zh-CN,zh;q=0.9".parse().unwrap());
         headers.insert("Baggage", "sentry-environment=production,sentry-release=d6add6fb0460641fd482d767a335ef72b9b6abb8,sentry-public_key=b311e0f2690c81f25e2c4cf6d4f7ce1c".parse().unwrap());
         headers.insert("Cache-Control", "no-cache".parse().unwrap());
@@ -145,7 +162,12 @@ impl ChatRequestBuilder {
         headers.insert("Pragma", "no-cache".parse().unwrap());
         headers.insert("Priority", "u=1, i".parse().unwrap());
         headers.insert("Referer", "https://grok.com/".parse().unwrap());
-        headers.insert("Sec-Ch-Ua", "\"Google Chrome\";v=\"136\", \"Chromium\";v=\"136\", \"Not(A:Brand\";v=\"24\"".parse().unwrap());
+        headers.insert(
+            "Sec-Ch-Ua",
+            "\"Google Chrome\";v=\"136\", \"Chromium\";v=\"136\", \"Not(A:Brand\";v=\"24\""
+                .parse()
+                .unwrap(),
+        );
         headers.insert("Sec-Ch-Ua-Arch", "arm".parse().unwrap());
         headers.insert("Sec-Ch-Ua-Bitness", "64".parse().unwrap());
         headers.insert("Sec-Ch-Ua-Mobile", "?0".parse().unwrap());
@@ -157,7 +179,10 @@ impl ChatRequestBuilder {
         headers.insert("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36".parse().unwrap());
         let statsig = StatsigService::gen_id().await;
         headers.insert("x-statsig-id", statsig.parse().unwrap());
-        headers.insert("x-xai-request-id", uuid::Uuid::new_v4().to_string().parse().unwrap());
+        headers.insert(
+            "x-xai-request-id",
+            uuid::Uuid::new_v4().to_string().parse().unwrap(),
+        );
         let raw = token.strip_prefix("sso=").unwrap_or(token);
         let cf: String = get_config("grok.cf_clearance", String::new()).await;
         let cookie = if cf.is_empty() {
@@ -218,21 +243,11 @@ impl ChatRequestBuilder {
     }
 }
 
-pub struct GrokChatService {
-    client: Client,
-}
+pub struct GrokChatService;
 
 impl GrokChatService {
     pub async fn new() -> Self {
-        let proxy: String = get_config("grok.base_proxy_url", String::new()).await;
-        let mut builder = Client::builder();
-        if !proxy.is_empty() {
-            if let Ok(proxy) = reqwest::Proxy::all(&proxy) {
-                builder = builder.proxy(proxy);
-            }
-        }
-        let client = builder.build().unwrap();
-        Self { client }
+        Self
     }
 
     pub async fn chat(
@@ -246,14 +261,19 @@ impl GrokChatService {
         file_attachments: &[String],
         image_attachments: &[String],
     ) -> Result<LineStream, ApiError> {
-        let use_curl: bool = get_config("grok.use_curl_impersonate", true).await;
-        if !use_curl {
-            return Err(ApiError::upstream("curl-impersonate is required for Grok requests".to_string()));
-        }
-        self.chat_via_curl(token, message, model, mode, think, file_attachments, image_attachments).await
+        self.chat_via_wreq(
+            token,
+            message,
+            model,
+            mode,
+            think,
+            file_attachments,
+            image_attachments,
+        )
+        .await
     }
 
-    async fn chat_via_curl(
+    async fn chat_via_wreq(
         &self,
         token: &str,
         message: &str,
@@ -264,114 +284,54 @@ impl GrokChatService {
         image_attachments: &[String],
     ) -> Result<LineStream, ApiError> {
         let headers = ChatRequestBuilder::build_headers(token).await;
-        let payload = ChatRequestBuilder::build_payload(message, model, mode, think, file_attachments, image_attachments).await;
+        let payload = ChatRequestBuilder::build_payload(
+            message,
+            model,
+            mode,
+            think,
+            file_attachments,
+            image_attachments,
+        )
+        .await;
         let timeout: u64 = get_config("grok.timeout", 120u64).await;
         let proxy: String = get_config("grok.base_proxy_url", String::new()).await;
-        let curl_path: String = get_config("grok.curl_path", "curl-impersonate".to_string()).await;
-        let impersonate: String = get_config("grok.curl_impersonate", "chrome136".to_string()).await;
+        let client = build_client(Some(&proxy), timeout).await?;
+        let request = apply_headers(client.post(CHAT_API), &headers)
+            .timeout(Duration::from_secs(timeout))
+            .body(payload.to_string());
 
-        let resolved_path = if curl_path.trim().is_empty() {
-            "curl-impersonate".to_string()
-        } else {
-            curl_path
-        };
+        let response = request
+            .send()
+            .await
+            .map_err(|e| ApiError::upstream(format!("Chat request failed: {e}")))?;
 
-        let mut cmd = Command::new(resolved_path);
-        cmd.arg("-sS")
-            .arg("--compressed")
-            .arg("--http2")
-            .arg("-i")
-            .arg("-N")
-            .arg("-X")
-            .arg("POST")
-            .arg(CHAT_API)
-            .arg("--max-time")
-            .arg(timeout.to_string());
-
-        if !proxy.trim().is_empty() {
-            cmd.arg("-x").arg(proxy.trim());
-        }
-
-        if !impersonate.trim().is_empty() {
-            cmd.arg("--impersonate").arg(impersonate.trim());
-        }
-
-        for (name, value) in headers.iter() {
-            let val = value.to_str().unwrap_or("");
-            cmd.arg("-H").arg(format!("{}: {}", name.as_str(), val));
-        }
-
-        cmd.arg("--data").arg(payload.to_string());
-
-        cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
-        let mut child = cmd
-            .spawn()
-            .map_err(|e| ApiError::upstream(format!("Chat curl error: {e}")))?;
-        let stdout = child
-            .stdout
-            .take()
-            .ok_or_else(|| ApiError::upstream("Chat curl stdout unavailable".to_string()))?;
-        let mut stderr = child.stderr.take();
-
-        let mut lines = FramedRead::new(stdout, LinesCodec::new());
-        let mut status: Option<u16> = None;
-        loop {
-            match lines.next().await {
-                Some(Ok(line)) => {
-                    if line.starts_with("HTTP/") {
-                        status = line
-                            .split_whitespace()
-                            .nth(1)
-                            .and_then(|v| v.parse::<u16>().ok());
-                        continue;
-                    }
-                    if line.is_empty() {
-                        if status == Some(100) {
-                            status = None;
-                            continue;
-                        }
-                        if status.is_some() {
-                            break;
-                        }
-                    }
-                }
-                Some(Err(e)) => {
-                    return Err(ApiError::upstream(format!("Chat curl read error: {e}")));
-                }
-                None => {
-                    return Err(ApiError::upstream("Chat curl response empty".to_string()));
-                }
-            }
-        }
-
-        let status_code = status.unwrap_or(0);
+        let status_code = response.status().as_u16();
         if status_code != 200 {
-            if let Some(mut err) = stderr.take() {
-                let mut buf = Vec::new();
-                let _ = err.read_to_end(&mut buf).await;
-                if !buf.is_empty() {
-                    let msg = String::from_utf8_lossy(&buf);
-                    tracing::warn!("Chat curl stderr: {msg}");
-                }
+            let content_type = response
+                .headers()
+                .get("content-type")
+                .and_then(|v| v.to_str().ok())
+                .unwrap_or("<unknown>")
+                .to_string();
+            let body = response
+                .text()
+                .await
+                .unwrap_or_else(|_| String::new());
+            let preview = body_preview(&body, 220);
+            if !preview.is_empty() {
+                tracing::warn!(
+                    "Chat error status={} content_type={} body={}",
+                    status_code,
+                    content_type,
+                    preview
+                );
             }
-            let _ = child.wait().await;
-            return Err(ApiError::upstream(format!("Grok API request failed: {status_code}")));
+            return Err(ApiError::upstream(format!(
+                "Grok API request failed: {status_code}; content-type: {content_type}; body: {preview}"
+            )));
         }
 
-        tokio::spawn(async move {
-            if let Some(mut err) = stderr.take() {
-                let mut buf = Vec::new();
-                let _ = err.read_to_end(&mut buf).await;
-                if !buf.is_empty() {
-                    let msg = String::from_utf8_lossy(&buf);
-                    tracing::warn!("Chat curl stderr: {msg}");
-                }
-            }
-            let _ = child.wait().await;
-        });
-
-        let stream = lines.filter_map(|line| async move { line.ok() });
-        Ok(Box::pin(stream))
+        Ok(line_stream_from_response(response))
     }
 
     pub async fn chat_openai(
@@ -379,7 +339,8 @@ impl GrokChatService {
         token: &str,
         request: &ChatRequest,
     ) -> Result<(LineStream, bool, String), ApiError> {
-        let model_info = ModelService::get(&request.model).ok_or_else(|| ApiError::invalid_request("Unknown model"))?;
+        let model_info = ModelService::get(&request.model)
+            .ok_or_else(|| ApiError::invalid_request("Unknown model"))?;
         let is_video = model_info.is_video;
         let (message, attachments) = MessageExtractor::extract(&request.messages, is_video)?;
 
@@ -397,8 +358,12 @@ impl GrokChatService {
             }
         }
 
-        let stream = request.stream.unwrap_or(get_config("grok.stream", true).await);
-        let think = request.think.or(Some(get_config("grok.thinking", false).await));
+        let stream = request
+            .stream
+            .unwrap_or(get_config("grok.stream", true).await);
+        let think = request
+            .think
+            .or(Some(get_config("grok.thinking", false).await));
 
         let response = self
             .chat(
@@ -439,13 +404,25 @@ impl ChatService {
         };
         let service = GrokChatService::new().await;
         let (resp, is_stream, model_name) = service.chat_openai(&token, &chat_req).await?;
-        Ok(ChatResult::Stream { stream: resp, token, model: model_name, is_stream, think })
+        Ok(ChatResult::Stream {
+            stream: resp,
+            token,
+            model: model_name,
+            is_stream,
+            think,
+        })
     }
 }
 
 pub type LineStream = Pin<Box<dyn Stream<Item = String> + Send>>;
 
 pub enum ChatResult {
-    Stream { stream: LineStream, token: String, model: String, is_stream: bool, think: Option<bool> },
+    Stream {
+        stream: LineStream,
+        token: String,
+        model: String,
+        is_stream: bool,
+        think: Option<bool>,
+    },
     Json(JsonValue),
 }

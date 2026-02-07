@@ -1,5 +1,5 @@
 use base64::Engine;
-use rand::{distributions::Alphanumeric, Rng};
+use rand::{Rng, distributions::Alphanumeric};
 
 use crate::core::config::get_config;
 

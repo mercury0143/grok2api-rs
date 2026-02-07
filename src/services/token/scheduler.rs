@@ -44,12 +44,17 @@ impl TokenRefreshScheduler {
     }
 }
 
-static SCHEDULER: tokio::sync::OnceCell<Arc<tokio::sync::Mutex<TokenRefreshScheduler>>> = tokio::sync::OnceCell::const_new();
+static SCHEDULER: tokio::sync::OnceCell<Arc<tokio::sync::Mutex<TokenRefreshScheduler>>> =
+    tokio::sync::OnceCell::const_new();
 
 pub async fn get_scheduler() -> Arc<tokio::sync::Mutex<TokenRefreshScheduler>> {
     let interval: i64 = get_config("token.refresh_interval_hours", 8i64).await;
     let scheduler = SCHEDULER
-        .get_or_init(|| async { Arc::new(tokio::sync::Mutex::new(TokenRefreshScheduler::new(interval))) })
+        .get_or_init(|| async {
+            Arc::new(tokio::sync::Mutex::new(TokenRefreshScheduler::new(
+                interval,
+            )))
+        })
         .await
         .clone();
     scheduler

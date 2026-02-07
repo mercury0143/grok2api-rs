@@ -42,9 +42,9 @@ const LOCALE_MAP = {
     "base_proxy_url": { title: "基础代理 URL", desc: "代理请求到 Grok 官网的基础服务地址。" },
     "asset_proxy_url": { title: "资源代理 URL", desc: "代理请求到 Grok 官网的静态资源（图片/视频）地址。" },
     "cf_clearance": { title: "CF Clearance", desc: "Cloudflare 验证 Cookie，用于验证 Cloudflare 的验证。" },
-    "use_curl_impersonate": { title: "使用 curl-impersonate", desc: "是否启用 curl-impersonate 作为 Grok 上游请求方式（启用后仅使用外部 curl-impersonate）。" },
-    "curl_impersonate": { title: "curl impersonate", desc: "curl-impersonate 伪装的浏览器标识（例如 chrome116）。为空时使用指定的 curl 可执行文件自身默认伪装。" },
-    "curl_path": { title: "curl path", desc: "curl-impersonate 可执行文件路径（例如 /root/tmp/curl_chrome116）。" },
+    "wreq_emulation": { title: "wreq 指纹", desc: "上游请求使用的浏览器指纹模板（例如 chrome_136、edge_136、firefox_136）。" },
+    "wreq_emulation_usage": { title: "Usage 专用指纹", desc: "仅用于 /rest/rate-limits 的浏览器指纹，留空表示跟随 wreq 指纹。" },
+    "wreq_emulation_nsfw": { title: "NSFW 专用指纹", desc: "仅用于 NSFW 开启接口的浏览器指纹。留空时跟随 wreq 指纹；遇到 401/403 会自动回退 chrome_116 再试一次。" },
     "max_retry": { title: "最大重试", desc: "请求 Grok 服务失败时的最大重试次数。" },
     "retry_status_codes": { title: "重试状态码", desc: "触发重试的 HTTP 状态码列表。" }
   },
@@ -80,6 +80,7 @@ const LOCALE_MAP = {
     "enable_chat_completions": { title: "Chat Completions", desc: "是否启用 /v1/chat/completions（OpenAI Chat Completions 兼容接口）。" },
     "enable_responses": { title: "Responses API", desc: "是否启用 /v1/responses（OpenAI Responses API 兼容接口）。" },
     "enable_images": { title: "Images Generations", desc: "是否启用 /v1/images/generations（图片生成）。" },
+    "enable_images_nsfw": { title: "Images NSFW", desc: "是否启用 /v1/images/generations/nsfw（NSFW 专用图片生成，会先尝试开启 NSFW）。" },
     "enable_models": { title: "Models", desc: "是否启用 /v1/models（模型列表）。" },
     "enable_files": { title: "Files", desc: "是否启用 /v1/files/image/* 和 /v1/files/video/*（缓存文件访问）。" }
   }
@@ -87,18 +88,33 @@ const LOCALE_MAP = {
 
 const SECTION_ORDER = new Map(Object.keys(LOCALE_MAP).map((key, index) => [key, index]));
 
+function normalizeLocaleKey(value) {
+  return String(value || '').trim().toLowerCase().replace(/[\s-]+/g, '_');
+}
+
 function getText(section, key) {
-  if (LOCALE_MAP[section] && LOCALE_MAP[section][key]) {
-    return LOCALE_MAP[section][key];
+  const sectionKeys = [section, normalizeLocaleKey(section)];
+  const keyKeys = [key, normalizeLocaleKey(key)];
+
+  for (const sec of sectionKeys) {
+    const localeSection = LOCALE_MAP[sec];
+    if (!localeSection) continue;
+    for (const k of keyKeys) {
+      if (localeSection[k]) {
+        return localeSection[k];
+      }
+    }
   }
+
   return {
-    title: key.replace(/_/g, ' '),
+    title: String(key || '').replace(/_/g, ' '),
     desc: '暂无说明，请参考配置文档。'
   };
 }
 
 function getSectionLabel(section) {
-  return (LOCALE_MAP[section] && LOCALE_MAP[section].label) || `${section} 设置`;
+  const localeSection = LOCALE_MAP[section] || LOCALE_MAP[normalizeLocaleKey(section)];
+  return (localeSection && localeSection.label) || `${section} 设置`;
 }
 
 function sortByOrder(keys, orderMap) {

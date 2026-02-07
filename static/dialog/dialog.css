@@ -1,0 +1,226 @@
+.dialog-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.55fr) minmax(360px, 1fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.dialog-column {
+  min-width: 0;
+}
+
+.dialog-card {
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px;
+}
+
+.dialog-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.dialog-form-grid.image-only {
+  grid-template-columns: repeat(auto-fit, minmax(128px, 1fr));
+  margin-top: 2px;
+  grid-column: 1 / -1;
+}
+
+.dialog-label {
+  font-size: 12px;
+  color: var(--accents-5);
+  margin-bottom: 6px;
+  display: inline-block;
+}
+
+.dialog-messages {
+  min-height: 560px;
+  max-height: 74vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.dialog-empty {
+  color: var(--accents-4);
+  font-size: 12px;
+  text-align: center;
+  padding: 48px 0;
+}
+
+.dialog-bubble {
+  border-radius: 10px;
+  padding: 10px;
+  border: 1px solid var(--border);
+}
+
+.dialog-bubble.user {
+  background: #fafafa;
+}
+
+.dialog-bubble.assistant {
+  background: #fff;
+}
+
+.dialog-role {
+  font-size: 11px;
+  color: var(--accents-4);
+  margin-bottom: 6px;
+}
+
+.dialog-text {
+  word-break: break-word;
+  font-size: 13px;
+  color: var(--accents-7);
+  line-height: 1.6;
+}
+
+.dialog-text p,
+.dialog-text ul,
+.dialog-text ol,
+.dialog-text pre,
+.dialog-text blockquote,
+.dialog-text h1,
+.dialog-text h2,
+.dialog-text h3,
+.dialog-text h4,
+.dialog-text h5,
+.dialog-text h6 {
+  margin: 0 0 10px;
+}
+
+.dialog-text p:last-child,
+.dialog-text ul:last-child,
+.dialog-text ol:last-child,
+.dialog-text pre:last-child,
+.dialog-text blockquote:last-child {
+  margin-bottom: 0;
+}
+
+.dialog-text h1,
+.dialog-text h2,
+.dialog-text h3,
+.dialog-text h4,
+.dialog-text h5,
+.dialog-text h6 {
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.dialog-text h1 { font-size: 1.1rem; }
+.dialog-text h2 { font-size: 1.05rem; }
+.dialog-text h3 { font-size: 1rem; }
+.dialog-text h4,
+.dialog-text h5,
+.dialog-text h6 { font-size: 0.95rem; }
+
+.dialog-text ul,
+.dialog-text ol {
+  padding-left: 1.25rem;
+}
+
+.dialog-text li {
+  margin: 2px 0;
+}
+
+.dialog-text blockquote {
+  border-left: 3px solid var(--accents-3);
+  padding-left: 10px;
+  color: var(--accents-5);
+}
+
+.dialog-text code {
+  font-family: 'Geist Mono', monospace;
+  font-size: 12px;
+  background: #f3f4f6;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 1px 5px;
+}
+
+.dialog-code {
+  position: relative;
+  overflow-x: auto;
+  background: #0f172a;
+  color: #e2e8f0;
+  border-radius: 8px;
+  border: 1px solid #1e293b;
+  padding: 12px;
+}
+
+.dialog-code code {
+  background: transparent;
+  border: 0;
+  padding: 0;
+  color: inherit;
+  display: block;
+  white-space: pre;
+}
+
+.dialog-code-lang {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  font-size: 10px;
+  color: #cbd5e1;
+  background: rgba(148, 163, 184, 0.2);
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  border-radius: 999px;
+  padding: 2px 8px;
+  text-transform: uppercase;
+}
+
+.dialog-text a {
+  color: #0f172a;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.dialog-images {
+  margin-top: 8px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 8px;
+}
+
+.dialog-images img {
+  width: 100%;
+  max-width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.dialog-textarea {
+  min-height: 180px;
+  resize: vertical;
+}
+
+@media (max-width: 1040px) {
+  .dialog-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .dialog-messages {
+    min-height: 360px;
+    max-height: 60vh;
+  }
+}
+
+@media (max-width: 900px) {
+  .dialog-form-grid,
+  .dialog-form-grid.image-only {
+    grid-template-columns: 1fr;
+  }
+
+  .dialog-messages {
+    min-height: 320px;
+    max-height: 56vh;
+  }
+
+  .dialog-textarea {
+    min-height: 120px;
+  }
+}

@@ -10,7 +10,10 @@ pub struct TokenPool {
 
 impl TokenPool {
     pub fn new(name: &str) -> Self {
-        Self { name: name.to_string(), tokens: Vec::new() }
+        Self {
+            name: name.to_string(),
+            tokens: Vec::new(),
+        }
     }
 
     pub fn add(&mut self, token: TokenInfo) {

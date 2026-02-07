@@ -1,11 +1,11 @@
-use axum::{routing::post, Json, Router};
+use async_stream::stream;
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
-use async_stream::stream;
+use axum::{Json, Router, routing::post};
 use bytes::Bytes;
 use futures::StreamExt;
 use serde::Deserialize;
-use serde_json::{json, Value as JsonValue};
+use serde_json::{Value as JsonValue, json};
 use std::convert::Infallible;
 
 use crate::core::auth::verify_api_key;
@@ -14,7 +14,9 @@ use crate::core::exceptions::ApiError;
 use crate::services::grok::chat::{ChatResult, ChatService};
 use crate::services::grok::media::{VideoResult, VideoService};
 use crate::services::grok::model::{Cost, ModelService};
-use crate::services::grok::processor::{CollectProcessor, StreamProcessor, VideoCollectProcessor, VideoStreamProcessor};
+use crate::services::grok::processor::{
+    CollectProcessor, StreamProcessor, VideoCollectProcessor, VideoStreamProcessor,
+};
 use crate::services::token::{EffortType, TokenService};
 
 #[derive(Debug, Deserialize)]
@@ -55,7 +57,8 @@ fn normalize_message(msg: &JsonValue) -> JsonValue {
                     continue;
                 }
                 if typ == "input_image" {
-                    let url = block.get("image_url")
+                    let url = block
+                        .get("image_url")
                         .and_then(|v| v.get("url"))
                         .and_then(|v| v.as_str())
                         .or_else(|| block.get("url").and_then(|v| v.as_str()))
@@ -112,10 +115,24 @@ fn build_messages(req: &ResponsesRequest) -> Result<Vec<JsonValue>, ApiError> {
     Err(ApiError::invalid_request("input is required"))
 }
 
-fn response_from_text(model: &str, created: i64, text: &str, usage: Option<&JsonValue>) -> JsonValue {
-    let input_tokens = usage.and_then(|u| u.get("prompt_tokens")).and_then(|v| v.as_i64()).unwrap_or(0);
-    let output_tokens = usage.and_then(|u| u.get("completion_tokens")).and_then(|v| v.as_i64()).unwrap_or(0);
-    let total_tokens = usage.and_then(|u| u.get("total_tokens")).and_then(|v| v.as_i64()).unwrap_or(input_tokens + output_tokens);
+fn response_from_text(
+    model: &str,
+    created: i64,
+    text: &str,
+    usage: Option<&JsonValue>,
+) -> JsonValue {
+    let input_tokens = usage
+        .and_then(|u| u.get("prompt_tokens"))
+        .and_then(|v| v.as_i64())
+        .unwrap_or(0);
+    let output_tokens = usage
+        .and_then(|u| u.get("completion_tokens"))
+        .and_then(|v| v.as_i64())
+        .unwrap_or(0);
+    let total_tokens = usage
+        .and_then(|u| u.get("total_tokens"))
+        .and_then(|v| v.as_i64())
+        .unwrap_or(input_tokens + output_tokens);
 
     let response_id = format!("resp-{}", uuid::Uuid::new_v4().simple());
     let msg_id = format!("msg-{}", uuid::Uuid::new_v4().simple());
@@ -141,14 +158,23 @@ fn response_from_text(model: &str, created: i64, text: &str, usage: Option<&Json
     })
 }
 
-async fn responses(headers: HeaderMap, Json(req): Json<ResponsesRequest>) -> Result<Response, ApiError> {
+async fn responses(
+    headers: HeaderMap,
+    Json(req): Json<ResponsesRequest>,
+) -> Result<Response, ApiError> {
     verify_api_key(&headers).await?;
     let enabled: bool = get_config("downstream.enable_responses", true).await;
     if !enabled {
         return Err(ApiError::not_found("Endpoint disabled"));
     }
-    let model_info = ModelService::get(&req.model)
-        .ok_or_else(|| ApiError::not_found(format!("The model `{}` does not exist or you do not have access to it.", req.model)).with_param("model").with_code("model_not_found"))?;
+    let model_info = ModelService::get(&req.model).ok_or_else(|| {
+        ApiError::not_found(format!(
+            "The model `{}` does not exist or you do not have access to it.",
+            req.model
+        ))
+        .with_param("model")
+        .with_code("model_not_found")
+    })?;
     let messages = build_messages(&req)?;
 
     let stream = match req.stream {
@@ -175,10 +201,20 @@ async fn responses(headers: HeaderMap, Json(req): Json<ResponsesRequest>) -> Res
         .await?;
 
         match result {
-            VideoResult::Stream { stream: line_stream, token, model, think, is_stream } => {
+            VideoResult::Stream {
+                stream: line_stream,
+                token,
+                model,
+                think,
+                is_stream,
+            } => {
                 if is_stream {
                     let processor = VideoStreamProcessor::new(&model, &token, think).await;
-                    let effort = if model_info.cost == Cost::High { EffortType::High } else { EffortType::Low };
+                    let effort = if model_info.cost == Cost::High {
+                        EffortType::High
+                    } else {
+                        EffortType::Low
+                    };
                     let token_clone = token.clone();
                     let response_id = format!("resp-{}", uuid::Uuid::new_v4().simple());
                     let msg_id = format!("msg-{}", uuid::Uuid::new_v4().simple());
@@ -272,7 +308,11 @@ async fn responses(headers: HeaderMap, Json(req): Json<ResponsesRequest>) -> Res
                 } else {
                     let processor = VideoCollectProcessor::new(&model, &token).await;
                     let result = processor.process(line_stream).await;
-                    let effort = if model_info.cost == Cost::High { EffortType::High } else { EffortType::Low };
+                    let effort = if model_info.cost == Cost::High {
+                        EffortType::High
+                    } else {
+                        EffortType::Low
+                    };
                     let _ = TokenService::consume(&token, effort).await;
                     let content = result
                         .get("choices")
@@ -281,7 +321,10 @@ async fn responses(headers: HeaderMap, Json(req): Json<ResponsesRequest>) -> Res
                         .and_then(|v| v.get("content"))
                         .and_then(|v| v.as_str())
                         .unwrap_or("");
-                    let created = result.get("created").and_then(|v| v.as_i64()).unwrap_or_else(|| chrono::Utc::now().timestamp());
+                    let created = result
+                        .get("created")
+                        .and_then(|v| v.as_i64())
+                        .unwrap_or_else(|| chrono::Utc::now().timestamp());
                     let resp = response_from_text(&model, created, content, result.get("usage"));
                     Ok((StatusCode::OK, Json(resp)).into_response())
                 }
@@ -289,12 +332,24 @@ async fn responses(headers: HeaderMap, Json(req): Json<ResponsesRequest>) -> Res
             VideoResult::Json(json) => Ok((StatusCode::OK, Json(json)).into_response()),
         }
     } else {
-        let result = ChatService::completions(&req.model, messages, Some(stream), req.thinking.clone()).await?;
+        let result =
+            ChatService::completions(&req.model, messages, Some(stream), req.thinking.clone())
+                .await?;
         match result {
-            ChatResult::Stream { stream: line_stream, token, model, is_stream, think } => {
+            ChatResult::Stream {
+                stream: line_stream,
+                token,
+                model,
+                is_stream,
+                think,
+            } => {
                 if is_stream {
                     let processor = StreamProcessor::new(&model, &token, think).await;
-                    let effort = if model_info.cost == Cost::High { EffortType::High } else { EffortType::Low };
+                    let effort = if model_info.cost == Cost::High {
+                        EffortType::High
+                    } else {
+                        EffortType::Low
+                    };
                     let token_clone = token.clone();
                     let response_id = format!("resp-{}", uuid::Uuid::new_v4().simple());
                     let msg_id = format!("msg-{}", uuid::Uuid::new_v4().simple());
@@ -388,7 +443,11 @@ async fn responses(headers: HeaderMap, Json(req): Json<ResponsesRequest>) -> Res
                 } else {
                     let processor = CollectProcessor::new(&model, &token).await;
                     let result = processor.process(line_stream).await;
-                    let effort = if model_info.cost == Cost::High { EffortType::High } else { EffortType::Low };
+                    let effort = if model_info.cost == Cost::High {
+                        EffortType::High
+                    } else {
+                        EffortType::Low
+                    };
                     let _ = TokenService::consume(&token, effort).await;
                     let content = result
                         .get("choices")
@@ -397,7 +456,10 @@ async fn responses(headers: HeaderMap, Json(req): Json<ResponsesRequest>) -> Res
                         .and_then(|v| v.get("content"))
                         .and_then(|v| v.as_str())
                         .unwrap_or("");
-                    let created = result.get("created").and_then(|v| v.as_i64()).unwrap_or_else(|| chrono::Utc::now().timestamp());
+                    let created = result
+                        .get("created")
+                        .and_then(|v| v.as_i64())
+                        .unwrap_or_else(|| chrono::Utc::now().timestamp());
                     let resp = response_from_text(&model, created, content, result.get("usage"));
                     Ok((StatusCode::OK, Json(resp)).into_response())
                 }

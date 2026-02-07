@@ -1,4 +1,4 @@
-use axum::{routing::get, Router};
+use axum::{Router, routing::get};
 use tower_http::cors::CorsLayer;
 
 use crate::api;
@@ -12,5 +12,7 @@ pub fn create_app() -> Router {
         .merge(api_router)
         .route("/static/*path", get(static_handler))
         .layer(CorsLayer::permissive())
-        .layer(axum::middleware::from_fn(response_middleware::log_middleware))
+        .layer(axum::middleware::from_fn(
+            response_middleware::log_middleware,
+        ))
 }

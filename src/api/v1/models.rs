@@ -1,6 +1,6 @@
-use axum::{routing::get, Router};
-use axum::response::{IntoResponse, Response};
 use axum::Json;
+use axum::response::{IntoResponse, Response};
+use axum::{Router, routing::get};
 use serde_json::json;
 
 use crate::core::config::get_config;

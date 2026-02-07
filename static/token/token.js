@@ -617,6 +617,8 @@ async function startBatchRefresh() {
   const selected = getSelectedTokens();
   if (selected.length === 0) return showToast("未选择 Token", 'error');
 
+  clearNsfwFailureDetails();
+
   // Init state
   isBatchProcessing = true;
   isBatchPaused = false;
@@ -788,6 +790,7 @@ async function startBatchDelete() {
   }
   const selected = getSelectedTokens();
   if (selected.length === 0) return showToast("未选择 Token", 'error');
+  clearNsfwFailureDetails();
   const ok = await confirmAction(`确定要删除选中的 ${selected.length} 个 Token 吗？`, { okText: '删除' });
   if (!ok) return;
 
@@ -862,6 +865,56 @@ function closeConfirm(ok) {
       confirmResolver = null;
     }
   }, 200);
+}
+
+function clearNsfwFailureDetails() {
+  const container = byId('nsfw-failures');
+  const list = byId('nsfw-failures-list');
+  if (list) list.innerHTML = '';
+  if (container) container.classList.add('hidden');
+}
+
+function parseNsfwFailureItems(result) {
+  const output = [];
+  if (!result || typeof result !== 'object') return output;
+  const results = result.results && typeof result.results === 'object' ? result.results : {};
+
+  for (const [tokenMask, value] of Object.entries(results)) {
+    const item = value && typeof value === 'object' ? value : { error: String(value || '') };
+    if (item.success === true) continue;
+
+    const httpStatus = item.http_status !== undefined ? item.http_status : '-';
+    const grpcStatus = item.grpc_status !== undefined && item.grpc_status !== null
+      ? item.grpc_status
+      : '-';
+    const message = item.error || item.grpc_message || '未知错误';
+
+    output.push({
+      token: tokenMask,
+      httpStatus,
+      grpcStatus,
+      message: String(message)
+    });
+  }
+
+  return output;
+}
+
+function renderNsfwFailureDetails(result) {
+  const container = byId('nsfw-failures');
+  const list = byId('nsfw-failures-list');
+  if (!container || !list) return;
+
+  const failures = parseNsfwFailureItems(result).slice(0, 3);
+  if (failures.length === 0) {
+    clearNsfwFailureDetails();
+    return;
+  }
+
+  list.innerHTML = failures
+    .map((item) => `<li><span class="font-mono">${escapeHtml(item.token)}</span> ｜ HTTP ${escapeHtml(String(item.httpStatus))} ｜ gRPC ${escapeHtml(String(item.grpcStatus))} ｜ ${escapeHtml(item.message)}</li>`)
+    .join('');
+  container.classList.remove('hidden');
 }
 
 function escapeHtml(text) {
@@ -979,6 +1032,8 @@ async function batchEnableNSFW() {
   }
   const msg = `是否为选中的 ${targetCount} 个 Token 开启 NSFW 模式？`;
 
+  clearNsfwFailureDetails();
+
   const ok = await confirmAction(msg, { okText: '开启 NSFW' });
   if (!ok) return;
 
@@ -1028,6 +1083,7 @@ async function batchEnableNSFW() {
           let text = `NSFW 开启完成：成功 ${okCount}，失败 ${failCount}`;
           if (msg.warning) text += `\n⚠️ ${msg.warning}`;
           showToast(text, failCount > 0 || msg.warning ? 'warning' : 'success');
+          renderNsfwFailureDetails(msg.result);
           currentBatchTaskId = null;
           BatchSSE.close(batchEventSource);
           batchEventSource = null;
@@ -1035,6 +1091,7 @@ async function batchEnableNSFW() {
           setActionButtonsState();
         } else if (msg.type === 'cancelled') {
           finishBatchProcess(true, { silent: true });
+          clearNsfwFailureDetails();
           showToast('已终止 NSFW', 'info');
           currentBatchTaskId = null;
           BatchSSE.close(batchEventSource);
@@ -1043,6 +1100,7 @@ async function batchEnableNSFW() {
           setActionButtonsState();
         } else if (msg.type === 'error') {
           finishBatchProcess(true, { silent: true });
+          clearNsfwFailureDetails();
           showToast('开启失败: ' + (msg.error || '未知错误'), 'error');
           currentBatchTaskId = null;
           BatchSSE.close(batchEventSource);
@@ -1053,6 +1111,7 @@ async function batchEnableNSFW() {
       },
       onError: () => {
         finishBatchProcess(true, { silent: true });
+        clearNsfwFailureDetails();
         showToast('连接中断', 'error');
         currentBatchTaskId = null;
         BatchSSE.close(batchEventSource);
@@ -1063,6 +1122,7 @@ async function batchEnableNSFW() {
     });
   } catch (e) {
     finishBatchProcess(true, { silent: true });
+    clearNsfwFailureDetails();
     showToast('请求错误: ' + e.message, 'error');
     if (btn) btn.disabled = false;
     setActionButtonsState();
