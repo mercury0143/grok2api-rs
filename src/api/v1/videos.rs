@@ -141,8 +141,8 @@ async fn create_video(headers: HeaderMap, mut multipart: Multipart) -> Result<Re
                 .and_then(|v| v.as_str())
                 .unwrap_or("");
 
-            // 从 markdown 中提取视频 URL
-            let video_url = extract_video_url(content);
+            // 从内容中提取视频 URL 和封面 URL
+            let (video_url, poster_url) = extract_video_urls(content);
 
             let response = json!({
                 "id": format!("video-{}", uuid::Uuid::new_v4().simple()),
@@ -151,6 +151,7 @@ async fn create_video(headers: HeaderMap, mut multipart: Multipart) -> Result<Re
                 "model": model,
                 "data": {
                     "url": video_url,
+                    "poster": poster_url,
                     "prompt": prompt,
                     "aspect_ratio": aspect_ratio,
                     "seconds": final_seconds,
@@ -171,15 +172,40 @@ async fn create_video(headers: HeaderMap, mut multipart: Multipart) -> Result<Re
     }
 }
 
-/// 从 markdown 内容中提取视频 URL
-fn extract_video_url(content: &str) -> String {
-    // 匹配 markdown 视频格式: ![...](url)
-    if let Some(start) = content.find("](") {
-        if let Some(end) = content[start + 2..].find(')') {
-            return content[start + 2..start + 2 + end].to_string();
+/// 从内容中提取视频 URL 和封面 URL
+/// 支持 HTML <video> 标签和 markdown ![](url) 格式
+fn extract_video_urls(content: &str) -> (String, String) {
+    // 尝试从 HTML <video> 标签提取
+    // 提取 <source ... src="url" ...>
+    if let Some(src_start) = content.find("<source") {
+        let source_tag = &content[src_start..];
+        let video_url = extract_attr(source_tag, "src").unwrap_or_default();
+        // 提取 <video ... poster="url" ...>
+        let poster_url = extract_attr(content, "poster").unwrap_or_default();
+        if !video_url.is_empty() {
+            return (video_url, poster_url);
         }
     }
 
-    // 如果没有找到，返回原内容
-    content.to_string()
+    // 降级：尝试 markdown 格式 ![...](url)
+    if let Some(start) = content.find("](") {
+        if let Some(end) = content[start + 2..].find(')') {
+            return (content[start + 2..start + 2 + end].to_string(), String::new());
+        }
+    }
+
+    // 都没找到，返回原内容
+    (content.to_string(), String::new())
+}
+
+/// 从 HTML 标签中提取指定属性的值
+fn extract_attr(tag: &str, attr: &str) -> Option<String> {
+    let pattern = format!("{}=\"", attr);
+    if let Some(start) = tag.find(&pattern) {
+        let value_start = start + pattern.len();
+        if let Some(end) = tag[value_start..].find('"') {
+            return Some(tag[value_start..value_start + end].to_string());
+        }
+    }
+    None
 }
