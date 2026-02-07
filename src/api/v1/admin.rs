@@ -1,20 +1,20 @@
+use async_stream::stream;
+use axum::http::{HeaderMap, StatusCode};
+use axum::response::sse::Event;
 use axum::{
     extract::{Path, Query},
     response::{Html, IntoResponse, Response, Sse},
     routing::{get, post},
     Json, Router,
 };
-use axum::http::{HeaderMap, StatusCode};
-use axum::response::sse::Event;
 use futures::{Stream, StreamExt};
 use serde::Deserialize;
 use serde_json::{json, Value as JsonValue};
-use async_stream::stream;
 use std::collections::HashMap;
 use std::convert::Infallible;
 
 use crate::core::auth::{verify_api_key, verify_app_key, verify_stream_api_key};
-use crate::core::batch_tasks::{create_task, get_task, expire_task};
+use crate::core::batch_tasks::{create_task, expire_task, get_task};
 use crate::core::config::{get_all_config, update_config};
 use crate::core::exceptions::ApiError;
 use crate::core::static_assets;
@@ -1041,7 +1041,7 @@ async fn test_storage_api(headers: HeaderMap, Json(data): Json<JsonValue>) -> Re
         .and_then(|v| v.as_str())
         .ok_or_else(|| ApiError::invalid_request("Missing storage type"))?;
 
-    use crate::core::media_storage::{StorageConfig, create_storage};
+    use crate::core::media_storage::{create_storage, StorageConfig};
 
     let config = match storage_type {
         "s3" => {
