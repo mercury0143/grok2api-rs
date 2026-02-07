@@ -604,6 +604,35 @@ impl DownloadService {
         Ok(data)
     }
 
+    /// 下载文件并上传到配置的存储，返回访问 URL
+    pub async fn download_and_upload(&self, file_path: &str, token: &str, media_type: &str) -> Result<String, ApiError> {
+        // 先下载到本地（利用现有的下载和缓存逻辑）
+        let (local_path, mime) = self.download(file_path, token, media_type).await?;
+
+        // 获取媒体存储实例
+        let storage = crate::core::media_storage::get_media_storage().await;
+
+        let url = if let Some(storage) = storage {
+            // 读取文件数据
+            let data = tokio::fs::read(&local_path).await
+                .map_err(|e| ApiError::server(format!("Read file failed: {e}")))?;
+
+            // 上传到存储
+            let storage_path = storage.upload(file_path, &data, &mime).await
+                .map_err(|e| ApiError::from(e))?;
+
+            // 获取访问 URL（使用代理模式，direct=false）
+            storage.get_url(&storage_path, false).await
+                .map_err(|e| ApiError::from(e))?
+        } else {
+            // 如果存储未初始化，降级为本地代理 URL
+            let app_url: String = get_config("app.app_url", "http://127.0.0.1:8000".to_string()).await;
+            format!("{}/v1/files/{}{}", app_url.trim_end_matches('/'), media_type, file_path)
+        };
+
+        Ok(url)
+    }
+
     pub fn get_stats(&self, media_type: &str) -> JsonValue {
         let dir = if media_type == "image" { &self.image_dir } else { &self.video_dir };
         if !dir.exists() {

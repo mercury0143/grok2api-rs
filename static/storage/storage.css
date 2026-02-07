@@ -1,0 +1,85 @@
+/* storage.css - 存储管理页面样式 */
+
+.card {
+  background-color: var(--bg-accent);
+  border: 1px solid var(--accents-2);
+  border-radius: 8px;
+  transition: all 0.2s ease;
+}
+
+.card:hover {
+  border-color: var(--accents-3);
+}
+
+.card-content {
+  padding: 1.5rem;
+}
+
+.card-title {
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: var(--fg);
+}
+
+.config-label {
+  display: block;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--fg);
+  margin-bottom: 0.5rem;
+}
+
+.config-input {
+  width: 100%;
+  padding: 0.625rem 0.875rem;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  color: var(--fg);
+  background-color: var(--bg);
+  border: 1px solid var(--accents-2);
+  border-radius: 6px;
+  transition: all 0.15s ease;
+}
+
+.config-input:hover {
+  border-color: var(--accents-3);
+}
+
+.config-input:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(0, 112, 243, 0.1);
+}
+
+.config-input::placeholder {
+  color: var(--accents-4);
+}
+
+.config-hint {
+  margin-top: 0.375rem;
+  font-size: 0.75rem;
+  color: var(--accents-4);
+}
+
+input[type="radio"] {
+  accent-color: var(--primary);
+}
+
+input[type="checkbox"] {
+  accent-color: var(--primary);
+}
+
+code {
+  font-family: 'Geist Mono', monospace;
+  font-size: 0.875em;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.animate-spin {
+  animation: spin 1s linear infinite;
+}

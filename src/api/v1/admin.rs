@@ -31,9 +31,12 @@ pub fn router() -> Router {
         .route("/admin/token", get(admin_token_page))
         .route("/admin/cache", get(admin_cache_page))
         .route("/admin/downstream", get(admin_downstream_page))
+        .route("/admin/storage", get(admin_storage_page))
         .route("/api/v1/admin/login", post(admin_login_api))
         .route("/api/v1/admin/config", get(get_config_api).post(update_config_api))
         .route("/api/v1/admin/storage", get(get_storage_api))
+        .route("/api/v1/admin/storage/config", get(get_storage_config_api).post(update_storage_config_api))
+        .route("/api/v1/admin/storage/test", post(test_storage_api))
         .route("/api/v1/admin/tokens", get(get_tokens_api).post(update_tokens_api))
         .route("/api/v1/admin/tokens/refresh", post(refresh_tokens_api))
         .route("/api/v1/admin/tokens/refresh/async", post(refresh_tokens_api_async))
@@ -66,11 +69,18 @@ async fn admin_config_page() -> Response { render_template("config/config.html")
 async fn admin_token_page() -> Response { render_template("token/token.html").await }
 async fn admin_cache_page() -> Response { render_template("cache/cache.html").await }
 async fn admin_downstream_page() -> Response { render_template("downstream/downstream.html").await }
+async fn admin_storage_page() -> Response { render_template("storage/storage.html").await }
 
 async fn admin_login_api(headers: HeaderMap) -> Result<Response, ApiError> {
     verify_app_key(&headers).await?;
     let api_key: String = crate::core::config::get_config("app.api_key", String::new()).await;
-    Ok(Json(json!({"status": "success", "api_key": api_key})).into_response())
+    // 如果 api_key 为空，使用 app_key 作为替代，确保前端能拿到有效的 token
+    let effective_key = if api_key.is_empty() {
+        crate::core::config::get_config("app.app_key", String::new()).await
+    } else {
+        api_key
+    };
+    Ok(Json(json!({"status": "success", "api_key": effective_key})).into_response())
 }
 
 async fn get_config_api(headers: HeaderMap) -> Result<Response, ApiError> {
@@ -81,7 +91,12 @@ async fn get_config_api(headers: HeaderMap) -> Result<Response, ApiError> {
 
 async fn update_config_api(headers: HeaderMap, Json(data): Json<JsonValue>) -> Result<Response, ApiError> {
     verify_api_key(&headers).await?;
-    update_config(&data).await.map_err(|e| ApiError::server(e.to_string()))?;
+    // 从通用配置保存中移除 storage section，避免覆盖存储管理页面的配置
+    let mut filtered = data.clone();
+    if let Some(obj) = filtered.as_object_mut() {
+        obj.remove("storage");
+    }
+    update_config(&filtered).await.map_err(|e| ApiError::server(e.to_string()))?;
     Ok(Json(json!({"status": "success", "message": "配置已更新"})).into_response())
 }
 
@@ -444,6 +459,13 @@ async fn get_cache_stats_api(headers: HeaderMap, Query(query): Query<CacheQuery>
     let image_stats = dl.get_stats("image");
     let video_stats = dl.get_stats("video");
 
+    // 获取存储类型信息
+    let storage_type = if let Some(storage) = crate::core::media_storage::get_media_storage().await {
+        storage.storage_type()
+    } else {
+        "not_initialized"
+    };
+
     let mgr = get_token_manager().await;
     let mgr_guard = mgr.lock().await;
     let mut accounts = Vec::new();
@@ -527,8 +549,9 @@ async fn get_cache_stats_api(headers: HeaderMap, Query(query): Query<CacheQuery>
     }
 
     let mut response = json!({
-        "local_image": image_stats,
-        "local_video": video_stats,
+        "storage_type": storage_type,
+        "local_cache_image": image_stats,
+        "local_cache_video": video_stats,
         "online": online_stats,
         "online_accounts": accounts,
         "online_scope": scope.unwrap_or_else(|| "none".to_string()),
@@ -806,9 +829,17 @@ async fn load_online_cache_api_async(headers: HeaderMap, Json(data): Json<LoadOn
         let image_stats = dl.get_stats("image");
         let video_stats = dl.get_stats("video");
 
+        // 获取存储类型信息
+        let storage_type = if let Some(storage) = crate::core::media_storage::get_media_storage().await {
+            storage.storage_type()
+        } else {
+            "not_initialized"
+        };
+
         let mut result = json!({
-            "local_image": image_stats,
-            "local_video": video_stats,
+            "storage_type": storage_type,
+            "local_cache_image": image_stats,
+            "local_cache_video": video_stats,
             "online": {"count": total, "status": if tokens_for_spawn.is_empty() {"no_token"} else {"ok"}, "token": null, "last_asset_clear_at": null},
             "online_accounts": accounts_for_spawn,
             "online_scope": scope_for_spawn,
@@ -874,3 +905,176 @@ async fn cancel_batch(headers: HeaderMap, Path(task_id): Path<String>) -> Result
     task.lock().await.cancel();
     Ok(Json(json!({"status": "success"})).into_response())
 }
+
+// ========== 存储管理 API ==========
+
+/// 获取存储配置
+async fn get_storage_config_api(headers: HeaderMap) -> Result<Response, ApiError> {
+    verify_api_key(&headers).await?;
+
+    // 从配置中获取存储配置
+    let storage_type: String = crate::core::config::get_config("storage.type", "local".to_string()).await;
+
+    let config = match storage_type.as_str() {
+        "s3" => {
+            let endpoint: String = crate::core::config::get_config("storage.s3.endpoint", String::new()).await;
+            let region: String = crate::core::config::get_config("storage.s3.region", "us-east-1".to_string()).await;
+            let access_key: String = crate::core::config::get_config("storage.s3.access_key", String::new()).await;
+            let secret_key: String = crate::core::config::get_config("storage.s3.secret_key", String::new()).await;
+            let bucket: String = crate::core::config::get_config("storage.s3.bucket", "grok-media".to_string()).await;
+            let custom_domain: Option<String> = crate::core::config::get_config("storage.s3.custom_domain", None).await;
+            let path_prefix: String = crate::core::config::get_config("storage.s3.path_prefix", "grok/".to_string()).await;
+            let upload_timeout: u64 = crate::core::config::get_config("storage.s3.upload_timeout", 300).await;
+            let use_direct_url: bool = crate::core::config::get_config("storage.s3.use_direct_url", false).await;
+
+            json!({
+                "type": "s3",
+                "endpoint": endpoint,
+                "region": region,
+                "access_key": access_key,
+                "secret_key": "***", // 隐藏敏感信息
+                "bucket": bucket,
+                "custom_domain": custom_domain,
+                "path_prefix": path_prefix,
+                "upload_timeout": upload_timeout,
+                "use_direct_url": use_direct_url
+            })
+        }
+        _ => {
+            let base_dir: String = crate::core::config::get_config("storage.local.base_dir", "data/tmp".to_string()).await;
+            json!({
+                "type": "local",
+                "base_dir": base_dir
+            })
+        }
+    };
+
+    Ok(Json(config).into_response())
+}
+
+/// 更新存储配置
+async fn update_storage_config_api(headers: HeaderMap, Json(data): Json<JsonValue>) -> Result<Response, ApiError> {
+    verify_api_key(&headers).await?;
+
+    tracing::info!("update_storage_config_api called with data: {}", data);
+
+    let storage_type = data.get("type")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| ApiError::invalid_request("Missing storage type"))?;
+
+    // 构建要更新的配置
+    let mut updates = json!({
+        "storage": {
+            "type": storage_type
+        }
+    });
+
+    match storage_type {
+        "s3" => {
+            // 获取当前的 secret_key，如果提交的是 "***" 或空字符串则保留原值
+            let secret_key = data.get("secret_key").and_then(|v| v.as_str()).unwrap_or("");
+            let final_secret_key = if secret_key == "***" || secret_key.is_empty() {
+                // 保留原有的 secret_key
+                crate::core::config::get_config("storage.s3.secret_key", String::new()).await
+            } else {
+                secret_key.to_string()
+            };
+
+            let mut s3_config = serde_json::Map::new();
+            s3_config.insert("endpoint".to_string(), json!(data.get("endpoint").and_then(|v| v.as_str()).unwrap_or("")));
+            s3_config.insert("region".to_string(), json!(data.get("region").and_then(|v| v.as_str()).unwrap_or("us-east-1")));
+            s3_config.insert("access_key".to_string(), json!(data.get("access_key").and_then(|v| v.as_str()).unwrap_or("")));
+            s3_config.insert("secret_key".to_string(), json!(final_secret_key));
+            s3_config.insert("bucket".to_string(), json!(data.get("bucket").and_then(|v| v.as_str()).unwrap_or("grok-media")));
+            s3_config.insert("path_prefix".to_string(), json!(data.get("path_prefix").and_then(|v| v.as_str()).unwrap_or("grok/")));
+            s3_config.insert("upload_timeout".to_string(), json!(data.get("upload_timeout").and_then(|v| v.as_u64()).unwrap_or(300)));
+            s3_config.insert("use_direct_url".to_string(), json!(data.get("use_direct_url").and_then(|v| v.as_bool()).unwrap_or(false)));
+
+            // 处理 custom_domain - 如果是空字符串或 null，则不设置该字段
+            if let Some(domain) = data.get("custom_domain").and_then(|v| v.as_str()) {
+                if !domain.is_empty() {
+                    s3_config.insert("custom_domain".to_string(), json!(domain));
+                }
+            }
+
+            updates["storage"]["s3"] = JsonValue::Object(s3_config);
+        }
+        "local" => {
+            let local_config = json!({
+                "base_dir": data.get("base_dir").and_then(|v| v.as_str()).unwrap_or("data/tmp")
+            });
+            updates["storage"]["local"] = local_config;
+        }
+        _ => {
+            return Err(ApiError::invalid_request("Invalid storage type"));
+        }
+    }
+
+    // 更新配置
+    update_config(&updates).await.map_err(|e| ApiError::server(e.to_string()))?;
+
+    // 重新加载媒体存储（热更新）
+    match crate::core::media_storage::reload_media_storage().await {
+        Ok(_) => {
+            tracing::info!("Media storage reloaded successfully");
+            Ok(Json(json!({
+                "status": "success",
+                "message": "存储配置已更新并立即生效"
+            })).into_response())
+        }
+        Err(e) => {
+            tracing::error!("Failed to reload media storage: {:?}", e);
+            // 即使重载失败，配置也已保存，下次启动会生效
+            Ok(Json(json!({
+                "status": "warning",
+                "message": format!("存储配置已保存，但重载失败: {:?}。将在下次启动时生效", e)
+            })).into_response())
+        }
+    }
+}
+
+/// 测试存储连接
+async fn test_storage_api(headers: HeaderMap, Json(data): Json<JsonValue>) -> Result<Response, ApiError> {
+    verify_api_key(&headers).await?;
+
+    let storage_type = data.get("type")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| ApiError::invalid_request("Missing storage type"))?;
+
+    use crate::core::media_storage::{StorageConfig, create_storage};
+
+    let config = match storage_type {
+        "s3" => {
+            StorageConfig::S3 {
+                endpoint: data.get("endpoint").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                region: data.get("region").and_then(|v| v.as_str()).unwrap_or("us-east-1").to_string(),
+                access_key: data.get("access_key").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                secret_key: data.get("secret_key").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                bucket: data.get("bucket").and_then(|v| v.as_str()).unwrap_or("grok-media").to_string(),
+                custom_domain: data.get("custom_domain").and_then(|v| v.as_str()).map(|s| s.to_string()),
+                path_prefix: data.get("path_prefix").and_then(|v| v.as_str()).unwrap_or("grok/").to_string(),
+                upload_timeout: data.get("upload_timeout").and_then(|v| v.as_u64()).unwrap_or(300),
+                use_direct_url: data.get("use_direct_url").and_then(|v| v.as_bool()).unwrap_or(false),
+            }
+        }
+        "local" => {
+            StorageConfig::Local {
+                base_dir: data.get("base_dir").and_then(|v| v.as_str()).unwrap_or("data/tmp").to_string(),
+            }
+        }
+        _ => {
+            return Err(ApiError::invalid_request("Invalid storage type"));
+        }
+    };
+
+    // 创建存储实例并测试
+    let storage = create_storage(config).await.map_err(|e| ApiError::from(e))?;
+
+    storage.health_check().await.map_err(|e| ApiError::from(e))?;
+
+    Ok(Json(json!({
+        "status": "success",
+        "message": "存储连接测试成功"
+    })).into_response())
+}
+

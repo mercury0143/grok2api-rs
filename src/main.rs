@@ -24,6 +24,11 @@ async fn main() {
         tracing::warn!("Failed to load config: {err}");
     }
 
+    // Initialize media storage
+    if let Err(err) = core::media_storage::init_media_storage().await {
+        tracing::warn!("Failed to initialize media storage: {:?}", err);
+    }
+
     let auto_refresh: bool = core::config::get_config("token.auto_refresh", true).await;
     if auto_refresh {
         let scheduler = services::token::scheduler::get_scheduler().await;

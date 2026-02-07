@@ -6,3 +6,4 @@ pub mod embedded_curl;
 pub mod response_middleware;
 pub mod static_assets;
 pub mod storage;
+pub mod media_storage;

@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Grok2API-rs - 存储管理</title>
+  <link rel="icon" href="/static/favicon/favicon.ico">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://cdn.jsdelivr.net/npm/geist@1.0.0/dist/fonts/geist-sans/style.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/geist@1.0.0/dist/fonts/geist-mono/style.css" rel="stylesheet">
+  <link href="/static/common/common.css?v=3" rel="stylesheet">
+  <link href="/static/storage/storage.css?v=1" rel="stylesheet">
+  <link href="/static/common/toast.css" rel="stylesheet">
+</head>
+
+<body class="min-h-screen flex flex-col" style="background-color: var(--bg);">
+
+  <!-- Toast Container -->
+  <div id="toast-container" class="toast-container"></div>
+  <div id="app-header"></div>
+
+  <!-- Main Content -->
+  <main class="space-y-6 flex-1 container mx-auto max-w-5xl px-6 py-8 fade-in">
+
+    <div class="space-y-6">
+      <div class="flex justify-between items-center">
+        <div>
+          <h2 class="text-2xl font-semibold tracking-tight">存储管理</h2>
+          <p class="text-[var(--accents-4)] mt-1 text-sm">配置媒体文件（图片/视频）的存储方式。</p>
+        </div>
+        <div class="flex items-center gap-3">
+          <button onclick="testConnection()" id="test-btn" class="geist-button-outline gap-2">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+              stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
+            </svg>
+            测试连接
+          </button>
+          <button onclick="saveConfig()" id="save-btn" class="geist-button gap-2">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
+              <polyline points="17 21 17 13 7 13 7 21"></polyline>
+              <polyline points="7 3 7 8 15 8"></polyline>
+            </svg>
+            保存配置
+          </button>
+        </div>
+      </div>
+
+      <!-- Storage Type Selection -->
+      <div class="card">
+        <div class="card-content">
+          <h3 class="card-title">存储类型</h3>
+          <div class="mt-4 space-y-3">
+            <label class="flex items-center gap-3 cursor-pointer">
+              <input type="radio" name="storage-type" value="local" checked onchange="switchStorageType('local')"
+                class="w-4 h-4 text-blue-600">
+              <div>
+                <div class="font-medium">本地存储</div>
+                <div class="text-sm text-[var(--accents-4)]">文件存储在服务器本地磁盘</div>
+              </div>
+            </label>
+            <label class="flex items-center gap-3 cursor-pointer">
+              <input type="radio" name="storage-type" value="s3" onchange="switchStorageType('s3')"
+                class="w-4 h-4 text-blue-600">
+              <div>
+                <div class="font-medium">S3 / MinIO</div>
+                <div class="text-sm text-[var(--accents-4)]">使用 AWS S3 或兼容的对象存储服务</div>
+              </div>
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <!-- Local Storage Config -->
+      <div id="local-config" class="card">
+        <div class="card-content">
+          <h3 class="card-title">本地存储配置</h3>
+          <div class="mt-4 space-y-4">
+            <div>
+              <label class="config-label">存储目录</label>
+              <input type="text" id="local-base-dir" value="data/tmp" placeholder="data/tmp"
+                class="config-input">
+              <p class="config-hint">媒体文件存储的基础目录路径（相对于项目根目录）</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- S3 Storage Config -->
+      <div id="s3-config" class="card" style="display: none;">
+        <div class="card-content">
+          <h3 class="card-title">S3 / MinIO 配置</h3>
+          <div class="mt-4 space-y-4">
+            <div>
+              <label class="config-label">Endpoint</label>
+              <input type="text" id="s3-endpoint" placeholder="https://s3.amazonaws.com 或 http://minio:9000"
+                class="config-input">
+              <p class="config-hint">留空使用 AWS S3，填写自定义 endpoint 使用 MinIO 或其他 S3 兼容服务</p>
+            </div>
+
+            <div>
+              <label class="config-label">Region</label>
+              <input type="text" id="s3-region" value="us-east-1" placeholder="us-east-1" class="config-input">
+            </div>
+
+            <div class="grid grid-cols-2 gap-4">
+              <div>
+                <label class="config-label">Access Key</label>
+                <input type="text" id="s3-access-key" placeholder="您的 Access Key" class="config-input">
+              </div>
+              <div>
+                <label class="config-label">Secret Key</label>
+                <input type="password" id="s3-secret-key" placeholder="您的 Secret Key" class="config-input">
+              </div>
+            </div>
+
+            <div>
+              <label class="config-label">Bucket 名称</label>
+              <input type="text" id="s3-bucket" value="grok-media" placeholder="grok-media" class="config-input">
+            </div>
+
+            <div>
+              <label class="config-label">自定义域名（可选）</label>
+              <input type="text" id="s3-custom-domain" placeholder="https://cdn.example.com" class="config-input">
+              <p class="config-hint">使用直链模式时，将使用此域名生成文件 URL</p>
+            </div>
+
+            <div>
+              <label class="config-label">路径前缀</label>
+              <input type="text" id="s3-path-prefix" value="grok/" placeholder="grok/" class="config-input">
+              <p class="config-hint">上传文件时的路径前缀，如 "grok/" 会将文件存储在 Bucket 的 grok/ 目录下</p>
+            </div>
+
+            <div class="grid grid-cols-2 gap-4">
+              <div>
+                <label class="config-label">上传超时（秒）</label>
+                <input type="number" id="s3-upload-timeout" value="300" placeholder="300" min="1" class="config-input">
+              </div>
+              <div>
+                <label class="config-label flex items-center gap-2">
+                  <input type="checkbox" id="s3-use-direct-url" class="w-4 h-4">
+                  <span>使用直链模式</span>
+                </label>
+                <p class="config-hint mt-1">勾选后返回 S3 直链，否则返回项目代理 URL</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Info Box -->
+      <div class="card bg-blue-50 dark:bg-blue-950 border-blue-200 dark:border-blue-800">
+        <div class="card-content">
+          <div class="flex gap-3">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+              class="text-blue-600 dark:text-blue-400 flex-shrink-0 mt-0.5">
+              <circle cx="12" cy="12" r="10"></circle>
+              <line x1="12" y1="16" x2="12" y2="12"></line>
+              <line x1="12" y1="8" x2="12.01" y2="8"></line>
+            </svg>
+            <div class="text-sm space-y-2 text-blue-900 dark:text-blue-100">
+              <p><strong>配置优先级说明：</strong></p>
+              <ul class="list-disc list-inside space-y-1 ml-2">
+                <li>通过 API 保存的配置会持久化到 <code class="px-1 py-0.5 bg-blue-100 dark:bg-blue-900 rounded">data/config.toml</code></li>
+                <li>启动时优先使用持久化配置，其次使用默认配置</li>
+                <li>修改配置后需要重新上传文件才会使用新的存储方式</li>
+                <li>已上传的文件不会自动迁移，需要手动处理</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+  </main>
+
+  <div id="app-footer"></div>
+
+  <script src="/static/common/toast.js"></script>
+  <script src="/static/common/header.js"></script>
+  <script src="/static/common/footer.js"></script>
+  <script src="/static/common/admin-auth.js"></script>
+  <script src="/static/storage/storage.js?v=3"></script>
+</body>
+
+</html>

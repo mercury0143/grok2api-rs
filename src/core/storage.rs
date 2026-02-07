@@ -39,7 +39,9 @@ pub struct LocalStorage {
 
 impl LocalStorage {
     pub fn new() -> Self {
-        Self { lock: Mutex::new(()) }
+        Self {
+            lock: Mutex::new(()),
+        }
     }
 
     fn config_path() -> PathBuf {
@@ -162,16 +164,216 @@ impl Storage for LocalStorage {
     }
 }
 
-static STORAGE: once_cell::sync::OnceCell<std::sync::Arc<LocalStorage>> = once_cell::sync::OnceCell::new();
+static STORAGE: once_cell::sync::OnceCell<std::sync::Arc<LocalStorage>> =
+    once_cell::sync::OnceCell::new();
 
 pub fn get_storage() -> std::sync::Arc<LocalStorage> {
     STORAGE
         .get_or_init(|| {
-            let storage_type = std::env::var("SERVER_STORAGE_TYPE").unwrap_or_else(|_| "local".to_string());
+            let storage_type =
+                std::env::var("SERVER_STORAGE_TYPE").unwrap_or_else(|_| "local".to_string());
             if storage_type.to_lowercase() != "local" {
-                tracing::warn!("Only local storage is supported in Rust version. Requested: {storage_type}");
+                tracing::warn!(
+                    "Only local storage is supported in Rust version. Requested: {storage_type}"
+                );
             }
             std::sync::Arc::new(LocalStorage::new())
         })
         .clone()
 }
+
+// ========== 本地媒体存储实现 ==========
+
+use crate::core::media_storage::{MediaStorage, StorageError as MediaStorageError};
+use bytes::Bytes;
+
+/// 本地媒体文件存储
+pub struct LocalMediaStorage {
+    base_dir: PathBuf,
+}
+
+impl LocalMediaStorage {
+    pub fn new(base_dir: String) -> Result<Self, MediaStorageError> {
+        let path = if Path::new(&base_dir).is_absolute() {
+            PathBuf::from(base_dir)
+        } else {
+            project_root().join(&base_dir)
+        };
+
+        // 创建基础目录
+        std::fs::create_dir_all(&path).map_err(|e| MediaStorageError::IoError(e))?;
+
+        Ok(Self { base_dir: path })
+    }
+
+    /// 将文件路径转换为安全的本地路径
+    fn safe_path(&self, file_path: &str) -> PathBuf {
+        let safe = file_path
+            .replace('/', "-")
+            .trim_start_matches('-')
+            .to_string();
+        self.base_dir.join(safe)
+    }
+
+    /// 检测媒体类型（image/video）
+    fn detect_media_type(&self, mime_type: &str) -> &'static str {
+        if mime_type.starts_with("image/") {
+            "image"
+        } else if mime_type.starts_with("video/") {
+            "video"
+        } else {
+            "media"
+        }
+    }
+}
+
+#[async_trait]
+impl MediaStorage for LocalMediaStorage {
+    async fn upload(
+        &self,
+        file_path: &str,
+        data: &[u8],
+        mime_type: &str,
+    ) -> Result<String, MediaStorageError> {
+        let media_type = self.detect_media_type(mime_type);
+        let dir = self.base_dir.join(media_type);
+        tokio::fs::create_dir_all(&dir).await?;
+
+        let local_path = dir.join(file_path.replace('/', "-").trim_start_matches('-'));
+
+        // 原子写入
+        let tmp_path = local_path.with_extension("tmp");
+        tokio::fs::write(&tmp_path, data).await?;
+        tokio::fs::rename(&tmp_path, &local_path).await?;
+
+        tracing::info!("Uploaded to local storage: {}", local_path.display());
+
+        Ok(file_path.to_string())
+    }
+
+    async fn get_url(&self, file_path: &str, _direct: bool) -> Result<String, MediaStorageError> {
+        // 本地存储总是返回代理 URL
+        let app_url =
+            crate::core::config::get_config("app.app_url", "http://127.0.0.1:8000".to_string())
+                .await;
+
+        // 检测文件类型
+        let local_path = self.safe_path(file_path);
+        let mime = mime_guess::from_path(&local_path).first_or_octet_stream();
+        let media_type = if mime.type_() == "image" {
+            "image"
+        } else if mime.type_() == "video" {
+            "video"
+        } else {
+            "media"
+        };
+
+        Ok(format!(
+            "{}/v1/files/{}/{}",
+            app_url.trim_end_matches('/'),
+            media_type,
+            urlencoding::encode(file_path)
+        ))
+    }
+
+    async fn download(&self, file_path: &str) -> Result<(Bytes, String), MediaStorageError> {
+        let local_path = self.safe_path(file_path);
+
+        if !local_path.exists() {
+            return Err(MediaStorageError::NotFound);
+        }
+
+        let data = tokio::fs::read(&local_path).await?;
+        let mime = mime_guess::from_path(&local_path)
+            .first_or_octet_stream()
+            .to_string();
+
+        Ok((Bytes::from(data), mime))
+    }
+
+    async fn delete(&self, file_path: &str) -> Result<(), MediaStorageError> {
+        let local_path = self.safe_path(file_path);
+
+        if local_path.exists() {
+            tokio::fs::remove_file(&local_path).await?;
+            tracing::info!("Deleted from local storage: {}", local_path.display());
+        }
+
+        Ok(())
+    }
+
+    async fn health_check(&self) -> Result<(), MediaStorageError> {
+        // 检查基础目录是否可访问
+        if !self.base_dir.exists() {
+            tokio::fs::create_dir_all(&self.base_dir).await?;
+        }
+
+        // 尝试创建测试文件
+        let test_file = self.base_dir.join(".health_check");
+        tokio::fs::write(&test_file, b"ok").await?;
+        tokio::fs::remove_file(&test_file).await?;
+
+        Ok(())
+    }
+
+    fn storage_type(&self) -> &'static str {
+        "local"
+    }
+}
+
+/*
+  1. LocalStorage
+
+  - 用途：存储配置文件和Token数据
+  - 存储内容：
+    - data/config.toml - 应用配置
+    - data/token.json - Token信息
+  - 特点：
+    - 使用文件锁机制保证并发安全
+    - 支持 TOML 和 JSON 格式
+    - 实现 Storage trait
+
+  2. LocalMediaStorage
+
+  - 用途：存储媒体文件（图片/视频）
+  - 存储内容：
+    - data/tmp/image/ - 图片文件
+    - data/tmp/video/ - 视频文件
+  - 特点：
+    - 处理二进制数据
+    - 自动检测 MIME 类型
+    - 生成访问 URL
+    - 实现 MediaStorage trait
+
+  为什么不能混用？
+
+  // LocalStorage 的接口
+  trait Storage {
+      async fn load_config() -> JsonValue;
+      async fn save_config(data: &JsonValue);
+      async fn load_tokens() -> JsonValue;
+      async fn save_tokens(data: &JsonValue);
+  }
+
+  // LocalMediaStorage 的接口
+  trait MediaStorage {
+      async fn upload(file_path: &str, data: &[u8], mime_type: &str) -> String;
+      async fn get_url(file_path: &str, direct: bool) -> String;
+      async fn download(file_path: &str) -> (Bytes, String);
+      async fn delete(file_path: &str);
+  }
+
+  它们的接口完全不同，职责也不同：
+  - LocalStorage 是配置管理
+  - LocalMediaStorage 是媒体文件管理
+
+  架构设计
+
+  这是一个很好的关注点分离设计：
+  - 配置存储需要事务性、锁机制
+  - 媒体存储需要 URL 生成、MIME 类型处理、S3 兼容
+
+  如果混在一起会导致代码混乱，职责不清。
+
+  总结：这两个存储虽然都叫"Storage"，但是完全不同的东西，不能也不应该合并。
+*/

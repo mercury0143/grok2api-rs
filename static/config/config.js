@@ -225,7 +225,7 @@ function renderConfig(data) {
 
   const fragment = document.createDocumentFragment();
   const sections = sortByOrder(
-    Object.keys(data).filter((section) => section !== 'downstream'),
+    Object.keys(data).filter((section) => section !== 'downstream' && section !== 'storage'),
     SECTION_ORDER
   );
 

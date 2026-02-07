@@ -46,8 +46,15 @@ impl BaseProcessor {
             return format!("https://assets.grok.com{url_path}");
         }
         let dl = DownloadService::new().await;
-        let _ = dl.download(&url_path, &self.token, media_type).await;
-        format!("{}/v1/files/{media_type}{}", self.app_url.trim_end_matches('/'), url_path)
+        // 使用新的 download_and_upload 方法，会自动上传到配置的存储
+        match dl.download_and_upload(&url_path, &self.token, media_type).await {
+            Ok(url) => url,
+            Err(e) => {
+                tracing::error!("Failed to download and upload media: {}", e);
+                // 降级为原始 URL
+                format!("{}/v1/files/{media_type}{}", self.app_url.trim_end_matches('/'), url_path)
+            }
+        }
     }
 
     fn sse_chunk(&self, response_id: &str, fingerprint: &str, content: Option<&str>, role: Option<&str>, finish: Option<&str>) -> String {

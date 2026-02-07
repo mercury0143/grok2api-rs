@@ -5,7 +5,7 @@ edition = "2024"
 build = "build.rs"
 
 [dependencies]
-axum = { version = "0.7", features = ["macros"] }
+axum = { version = "0.7", features = ["macros", "multipart"] }
 axum-extra = { version = "0.9", features = ["typed-header"] }
 tokio = { version = "1.44", features = ["full"] }
 tower = "0.4"
@@ -34,3 +34,6 @@ async-stream = "0.3"
 sha1 = "0.10"
 url = "2.5"
 rust-embed = "8.5"
+aws-sdk-s3 = { version = "1.80", features = ["behavior-version-latest"] }
+aws-config = "1.5"
+aws-credential-types = "1.2"

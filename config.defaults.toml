@@ -3,7 +3,7 @@ temporary = true
 stream = true
 thinking = true
 dynamic_statsig = true
-filter_tags = ["xaiartifact","xai:tool_usage_card","grok:render"]
+filter_tags = ["xaiartifact", "xai:tool_usage_card", "grok:render"]
 timeout = 120
 base_proxy_url = ""
 asset_proxy_url = ""
@@ -12,7 +12,7 @@ use_curl_impersonate = true
 curl_impersonate = ""
 curl_path = "/root/data/curl-impersonate/curl_chrome116"
 max_retry = 3
-retry_status_codes = [401,429,403]
+retry_status_codes = [401, 429, 403]
 
 [app]
 app_url = "http://127.0.0.1:8000"
@@ -51,3 +51,22 @@ enable_responses = true
 enable_images = true
 enable_models = true
 enable_files = true
+
+[storage]
+type = "local" # 存储类型: local / s3
+enable_fallback = true # S3 失败时是否自动降级到本地存储
+
+[storage.local]
+base_dir = "data/tmp" # 本地存储基础目录
+
+[storage.s3]
+endpoint = "" # S3/MinIO endpoint (留空则使用 AWS S3)
+region = "us-east-1" # 区域
+access_key = "" # 访问密钥
+secret_key = "" # 密钥
+bucket = "grok-media" # 存储桶名称
+custom_domain = "" # 自定义域名(用于直链访问,可选)
+path_prefix = "grok/" # 路径前缀
+upload_timeout = 300 # 上传超时(秒)
+use_direct_url = false # 是否使用直链(true: 返回S3 URL, false: 返回项目代理URL)
+
