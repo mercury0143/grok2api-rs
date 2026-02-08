@@ -45,6 +45,10 @@ const LOCALE_MAP = {
     "wreq_emulation": { title: "wreq 指纹", desc: "上游请求使用的浏览器指纹模板（例如 chrome_136、edge_136、firefox_136）。" },
     "wreq_emulation_usage": { title: "Usage 专用指纹", desc: "仅用于 /rest/rate-limits 的浏览器指纹，留空表示跟随 wreq 指纹。" },
     "wreq_emulation_nsfw": { title: "NSFW 专用指纹", desc: "仅用于 NSFW 开启接口的浏览器指纹。留空时跟随 wreq 指纹；遇到 401/403 会自动回退 chrome_116 再试一次。" },
+    "media_user_agent": { title: "Media UA", desc: "媒体请求使用的 User-Agent 头。" },
+    "media_sec_ch_ua": { title: "Media Sec-Ch-Ua", desc: "媒体请求使用的 Sec-Ch-Ua 头。" },
+    "media_sec_ch_ua_platform": { title: "Media Platform", desc: "媒体请求使用的 Sec-Ch-Ua-Platform 头。" },
+    "media_sec_ch_ua_arch": { title: "Media Arch", desc: "媒体请求使用的 Sec-Ch-Ua-Arch 头。" },
     "max_retry": { title: "最大重试", desc: "请求 Grok 服务失败时的最大重试次数。" },
     "retry_status_codes": { title: "重试状态码", desc: "触发重试的 HTTP 状态码列表。" }
   },

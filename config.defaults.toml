@@ -17,6 +17,10 @@ imagine_default_image_count = 4
 imagine_sso_daily_limit = 10
 imagine_blocked_retry = 3
 imagine_max_retries = 5
+media_user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36 Edg/144.0.0.0"
+media_sec_ch_ua = "\"Not(A:Brand\";v=\"8\", \"Chromium\";v=\"144\", \"Microsoft Edge\";v=\"144\""
+media_sec_ch_ua_platform = "\"Windows\""
+media_sec_ch_ua_arch = "x86_64"
 
 [app]
 app_url = "http://127.0.0.1:8000"
