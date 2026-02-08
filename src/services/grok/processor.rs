@@ -42,17 +42,12 @@ impl BaseProcessor {
         if !url_path.starts_with('/') {
             url_path = format!("/{url_path}");
         }
-        if self.app_url.is_empty() {
-            return format!("https://assets.grok.com{url_path}");
-        }
         let dl = DownloadService::new().await;
-        // 使用新的 download_and_upload 方法，会自动上传到配置的存储
         match dl.download_and_upload(&url_path, &self.token, media_type).await {
             Ok(url) => url,
             Err(e) => {
                 tracing::error!("Failed to download and upload media: {}", e);
-                // 降级为原始 CDN URL
-                format!("https://assets.grok.com{url_path}")
+                String::new()
             }
         }
     }
