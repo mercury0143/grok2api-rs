@@ -319,6 +319,11 @@ impl MediaStorage for LocalMediaStorage {
     fn storage_type(&self) -> &'static str {
         "local"
     }
+
+    fn get_public_url(&self, key: &str) -> String {
+        // 本地存储无直链，返回 key 本身
+        key.to_string()
+    }
 }
 
 /*

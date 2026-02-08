@@ -51,12 +51,8 @@ impl BaseProcessor {
             Ok(url) => url,
             Err(e) => {
                 tracing::error!("Failed to download and upload media: {}", e);
-                // 降级为原始 URL
-                format!(
-                    "{}/v1/files/{media_type}{}",
-                    self.app_url.trim_end_matches('/'),
-                    url_path
-                )
+                // 降级为原始 CDN URL
+                format!("https://assets.grok.com{url_path}")
             }
         }
     }

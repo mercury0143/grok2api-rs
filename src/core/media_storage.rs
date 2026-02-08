@@ -114,6 +114,9 @@ pub trait MediaStorage: Send + Sync {
 
     /// 获取存储类型名称
     fn storage_type(&self) -> &'static str;
+
+    /// 根据已有的完整 S3 key 直接构建公开访问 URL（不再拼 prefix）
+    fn get_public_url(&self, key: &str) -> String;
 }
 
 /// 存储工厂：根据配置创建存储实例
@@ -252,24 +255,20 @@ impl MediaStorage for S3Storage {
         )
         .await
         .map_err(|_| StorageError::UploadTimeout)?
-        .map_err(|e| StorageError::S3Error(e.to_string()))?;
+        .map_err(|e| {
+            tracing::error!("S3 PutObject error for key '{}': {:?}", key, e);
+            StorageError::S3Error(e.to_string())
+        })?;
 
         tracing::info!("Uploaded to S3: {} (etag: {:?})", key, result.e_tag());
         Ok(key)
     }
 
-    async fn get_url(&self, file_path: &str, direct: bool)
+    async fn get_url(&self, file_path: &str, _direct: bool)
         -> Result<String, StorageError> {
         let key = self.build_key(file_path);
-
-        if direct || self.use_direct_url {
-            // 返回直链
-            Ok(self.build_direct_url(&key))
-        } else {
-            // 返回代理 URL
-            let app_url = crate::core::config::get_config("app.app_url", "http://127.0.0.1:8000".to_string()).await;
-            Ok(format!("{}/v1/files/s3/{}", app_url.trim_end_matches('/'), urlencoding::encode(file_path)))
-        }
+        // 始终返回直链（custom_domain + path）
+        Ok(self.build_direct_url(&key))
     }
 
     async fn download(&self, file_path: &str)
@@ -334,6 +333,10 @@ impl MediaStorage for S3Storage {
     fn storage_type(&self) -> &'static str {
         "s3"
     }
+
+    fn get_public_url(&self, key: &str) -> String {
+        self.build_direct_url(key)
+    }
 }
 
 // ========== 全局存储管理器 ==========
@@ -357,19 +360,16 @@ impl FallbackStorage {
 impl MediaStorage for FallbackStorage {
     async fn upload(&self, file_path: &str, data: &[u8], mime_type: &str)
         -> Result<String, StorageError> {
-        // 先尝试主存储（S3）
+        // 直接上传到主存储（S3），失败则报错，不降级到本地
         match self.primary.upload(file_path, data, mime_type).await {
             Ok(path) => {
                 tracing::info!("Uploaded to primary storage ({}): {}", self.primary.storage_type(), path);
                 Ok(path)
             }
             Err(e) => {
-                tracing::warn!("Primary storage ({}) upload failed: {:?}, falling back to {}",
-                    self.primary.storage_type(), e, self.fallback.storage_type());
-                // 降级到备用存储（本地）
-                let result = self.fallback.upload(file_path, data, mime_type).await?;
-                tracing::info!("Uploaded to fallback storage ({}): {}", self.fallback.storage_type(), result);
-                Ok(result)
+                tracing::error!("Primary storage ({}) upload failed: {:?}",
+                    self.primary.storage_type(), e);
+                Err(e)
             }
         }
     }
@@ -413,6 +413,10 @@ impl MediaStorage for FallbackStorage {
     fn storage_type(&self) -> &'static str {
         "fallback"
     }
+
+    fn get_public_url(&self, key: &str) -> String {
+        self.primary.get_public_url(key)
+    }
 }
 
 static MEDIA_STORAGE: OnceCell<RwLock<Option<Arc<dyn MediaStorage>>>> = OnceCell::new();
@@ -433,6 +437,11 @@ pub async fn init_media_storage() -> Result<(), StorageError> {
             let path_prefix: String = crate::core::config::get_config("storage.s3.path_prefix", "grok/".to_string()).await;
             let upload_timeout: u64 = crate::core::config::get_config("storage.s3.upload_timeout", 300).await;
             let use_direct_url: bool = crate::core::config::get_config("storage.s3.use_direct_url", false).await;
+
+            tracing::info!(
+                "S3 config: endpoint={}, region={}, bucket={}, path_prefix={}, access_key_len={}, secret_key_len={}",
+                endpoint, region, bucket, path_prefix, access_key.len(), secret_key.len()
+            );
 
             let s3_config = StorageConfig::S3 {
                 endpoint,

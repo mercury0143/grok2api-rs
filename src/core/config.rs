@@ -132,16 +132,11 @@ pub async fn get_config<T: DeserializeOwned>(key: &str, default: T) -> T {
 }
 
 fn get_value(config: &JsonValue, key: &str) -> Option<JsonValue> {
-    if !key.contains('.') {
-        return config.get(key).cloned();
+    let mut current = config;
+    for part in key.split('.') {
+        current = current.get(part)?;
     }
-    let mut iter = key.split('.');
-    let section = iter.next()?;
-    let rest = iter.next()?;
-    match config.get(section) {
-        Some(JsonValue::Object(map)) => map.get(rest).cloned(),
-        _ => None,
-    }
+    Some(current.clone())
 }
 
 fn deep_merge(base: &JsonValue, override_value: &JsonValue) -> JsonValue {

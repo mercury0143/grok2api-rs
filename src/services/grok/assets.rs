@@ -599,7 +599,7 @@ impl DownloadService {
         Ok(data)
     }
 
-    /// 下载文件并上传到配置的存储，返回访问 URL
+    /// 下载文件并上传到配置的存储，返回直链访问 URL
     pub async fn download_and_upload(&self, file_path: &str, token: &str, media_type: &str) -> Result<String, ApiError> {
         // 先下载到本地（利用现有的下载和缓存逻辑）
         let (local_path, mime) = self.download(file_path, token, media_type).await?;
@@ -607,25 +607,49 @@ impl DownloadService {
         // 获取媒体存储实例
         let storage = crate::core::media_storage::get_media_storage().await;
 
-        let url = if let Some(storage) = storage {
+        let result = if let Some(storage) = &storage {
             // 读取文件数据
             let data = tokio::fs::read(&local_path).await
                 .map_err(|e| ApiError::server(format!("Read file failed: {e}")))?;
 
-            // 上传到存储
-            let storage_path = storage.upload(file_path, &data, &mime).await
-                .map_err(|e| ApiError::from(e))?;
+            // 构建简洁的 S3 存储路径
+            let storage_path = Self::build_storage_path(file_path, media_type);
 
-            // 获取访问 URL（使用代理模式，direct=false）
-            storage.get_url(&storage_path, false).await
-                .map_err(|e| ApiError::from(e))?
+            // 上传到存储，返回完整的 S3 key
+            match storage.upload(&storage_path, &data, &mime).await {
+                Ok(storage_key) => Ok(storage.get_public_url(&storage_key)),
+                Err(e) => Err(ApiError::server(format!("S3 upload failed: {:?}", e))),
+            }
         } else {
-            // 如果存储未初始化，降级为本地代理 URL
-            let app_url: String = get_config("app.app_url", "http://127.0.0.1:8000".to_string()).await;
-            format!("{}/v1/files/{}{}", app_url.trim_end_matches('/'), media_type, file_path)
+            Err(ApiError::server("Media storage not initialized"))
         };
 
-        Ok(url)
+        // 无论上传成功还是失败，都删除本地文件
+        if let Err(e) = tokio::fs::remove_file(&local_path).await {
+            tracing::warn!("Failed to delete local file: {}", e);
+        }
+
+        result
+    }
+
+    /// 从原始 grok 路径构建 S3 存储路径（不含 path_prefix，由 build_key 添加）
+    /// 例如: /users/.../generated/0a4fad40-1346-4b6c-b2e9-70c97300f914/generated_video.mp4
+    ///    -> videos/0a4fad40-1346-4b6c-b2e9-70c97300f914.mp4
+    /// build_key 会在前面加 path_prefix（如 "grok/"），最终 key: grok/videos/uuid.mp4
+    fn build_storage_path(file_path: &str, media_type: &str) -> String {
+        let clean = file_path.trim_start_matches('/');
+        let parts: Vec<&str> = clean.rsplitn(3, '/').collect();
+        // parts[0] = "generated_video.mp4", parts[1] = "0a4fad40-...", ...
+        let ext = parts[0]
+            .rsplit_once('.')
+            .map(|(_, e)| format!(".{}", e))
+            .unwrap_or_default();
+        let uuid = if parts.len() >= 2 { parts[1] } else { parts[0] };
+        let sub_dir = match media_type {
+            "video" => "videos",
+            _ => "images",
+        };
+        format!("{}/{}{}", sub_dir, uuid, ext)
     }
 
     pub fn get_stats(&self, media_type: &str) -> JsonValue {
