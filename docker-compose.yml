@@ -1,6 +1,6 @@
 services:
   grok2api-rs:
-    image: ${IMAGE:-ghcr.io/xeanyu/grok2api-rs:latest}
+    image: grok2api-rs:latest
     container_name: grok2api-rs
     restart: unless-stopped
     ports:

@@ -1,5 +1,3 @@
-# syntax=docker/dockerfile:1.7
-
 FROM rust:1-bookworm AS builder
 WORKDIR /src
 
@@ -32,9 +30,16 @@ COPY --from=builder /src/target/release/grok2api-rs /app/grok2api-rs
 COPY config.defaults.toml /app/config.defaults.toml
 COPY docker/entrypoint.sh /app/entrypoint.sh
 
-RUN chmod +x /app/grok2api-rs /app/entrypoint.sh \
+# windows 系统执行下面
+RUN sed -i 's/\r$//' /app/entrypoint.sh \
+    && chmod +x /app/grok2api-rs /app/entrypoint.sh \
     && mkdir -p /app/data \
     && chown -R appuser:appuser /app
+
+## Linxu 系统执行下面
+#RUN chmod +x /app/grok2api-rs /app/entrypoint.sh \
+#    && mkdir -p /app/data \
+#    && chown -R appuser:appuser /app
 
 USER appuser
 EXPOSE 8000
