@@ -48,30 +48,30 @@ impl VideoService {
         headers.insert("Priority", "u=1, i".parse().unwrap());
         headers.insert("Referer", referer.parse().unwrap());
         let sec_ch_ua: String = get_config(
-            "grok.media_sec_ch_ua",
-            "\"Not(A:Brand\";v=\"8\", \"Chromium\";v=\"144\", \"Microsoft Edge\";v=\"144\"".to_string(),
+            "grok.sec_ch_ua",
+            "\"Chromium\";v=\"146\", \"Not-A.Brand\";v=\"24\", \"Microsoft Edge\";v=\"146\"".to_string(),
         )
         .await;
-        headers.insert(
-            "Sec-Ch-Ua",
-            sec_ch_ua.parse().unwrap(),
-        );
-        let arch: String = get_config("grok.media_sec_ch_ua_arch", "x86_64".to_string()).await;
-        headers.insert("Sec-Ch-Ua-Arch", arch.parse().unwrap());
+        headers.insert("Sec-Ch-Ua", sec_ch_ua.parse().unwrap());
+        let sec_ch_ua_arch: String =
+            get_config("grok.sec_ch_ua_arch", "x86_64".to_string()).await;
+        headers.insert("Sec-Ch-Ua-Arch", sec_ch_ua_arch.parse().unwrap());
         headers.insert("Sec-Ch-Ua-Bitness", "64".parse().unwrap());
         headers.insert("Sec-Ch-Ua-Mobile", "?0".parse().unwrap());
         headers.insert("Sec-Ch-Ua-Model", "".parse().unwrap());
-        let platform: String = get_config("grok.media_sec_ch_ua_platform", "\"Windows\"".to_string()).await;
-        headers.insert("Sec-Ch-Ua-Platform", platform.parse().unwrap());
+        let sec_ch_ua_platform: String =
+            get_config("grok.sec_ch_ua_platform", "\"Windows\"".to_string()).await;
+        headers.insert("Sec-Ch-Ua-Platform", sec_ch_ua_platform.parse().unwrap());
         headers.insert("Sec-Fetch-Dest", "empty".parse().unwrap());
         headers.insert("Sec-Fetch-Mode", "cors".parse().unwrap());
         headers.insert("Sec-Fetch-Site", "same-origin".parse().unwrap());
         let user_agent: String = get_config(
-            "grok.media_user_agent",
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36 Edg/144.0.0.0".to_string(),
+            "grok.user_agent",
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36 Edg/146.0.0.0".to_string(),
         )
         .await;
         headers.insert("User-Agent", user_agent.parse().unwrap());
+
         let statsig = StatsigService::gen_id().await;
         headers.insert("x-statsig-id", statsig.parse().unwrap());
         headers.insert(

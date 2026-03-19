@@ -162,25 +162,30 @@ impl ChatRequestBuilder {
         headers.insert("Pragma", "no-cache".parse().unwrap());
         headers.insert("Priority", "u=1, i".parse().unwrap());
         headers.insert("Referer", "https://grok.com/".parse().unwrap());
-        headers.insert(
-            "Sec-Ch-Ua",
-            // "\"Google Chrome\";v=\"136\", \"Chromium\";v=\"136\", \"Not(A:Brand\";v=\"24\""
-            "\"Not(A:Brand\";v=\"8\", \"Chromium\";v=\"144\", \"Microsoft Edge\";v=\"144\""
-                .parse()
-                .unwrap(),
-        );
-        // headers.insert("Sec-Ch-Ua-Arch", "arm".parse().unwrap());
-        headers.insert("Sec-Ch-Ua-Arch", "x86_64".parse().unwrap());
+        let sec_ch_ua: String = get_config(
+            "grok.sec_ch_ua",
+            "\"Chromium\";v=\"146\", \"Not-A.Brand\";v=\"24\", \"Microsoft Edge\";v=\"146\"".to_string(),
+        )
+        .await;
+        headers.insert("Sec-Ch-Ua", sec_ch_ua.parse().unwrap());
+        let sec_ch_ua_arch: String =
+            get_config("grok.sec_ch_ua_arch", "x86_64".to_string()).await;
+        headers.insert("Sec-Ch-Ua-Arch", sec_ch_ua_arch.parse().unwrap());
         headers.insert("Sec-Ch-Ua-Bitness", "64".parse().unwrap());
         headers.insert("Sec-Ch-Ua-Mobile", "?0".parse().unwrap());
         headers.insert("Sec-Ch-Ua-Model", "".parse().unwrap());
-        // headers.insert("Sec-Ch-Ua-Platform", "\"macOS\"".parse().unwrap());
-        headers.insert("Sec-Ch-Ua-Platform", "\"Windows\"".parse().unwrap());
+        let sec_ch_ua_platform: String =
+            get_config("grok.sec_ch_ua_platform", "\"Windows\"".to_string()).await;
+        headers.insert("Sec-Ch-Ua-Platform", sec_ch_ua_platform.parse().unwrap());
         headers.insert("Sec-Fetch-Dest", "empty".parse().unwrap());
         headers.insert("Sec-Fetch-Mode", "cors".parse().unwrap());
         headers.insert("Sec-Fetch-Site", "same-origin".parse().unwrap());
-        // headers.insert("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36".parse().unwrap());
-        headers.insert("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36 Edg/144.0.0.0".parse().unwrap());
+        let user_agent: String = get_config(
+            "grok.user_agent",
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36 Edg/146.0.0.0".to_string(),
+        )
+        .await;
+        headers.insert("User-Agent", user_agent.parse().unwrap());
         let statsig = StatsigService::gen_id().await;
         headers.insert("x-statsig-id", statsig.parse().unwrap());
         headers.insert(
